@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Not example_gaussian.py, but its mutant cousin.
-Goal is minimal edits to example_gaussian.py: should pull points from file
-instead of drawing multivariate directly, and calculate product Likelihood 
+Not example_gaussian.py, but the cousin of its mutant cousin.
+Mimics external_prior_example.py, with an initialize_me() function and a 
+likelihood evaluation function. Calculates product Likelihood 
 instead of summed (mixed model) likelihood.
 
 @author: marce
@@ -12,13 +12,19 @@ instead of summed (mixed model) likelihood.
 #! /usr/bin/env python
 #import os
 #os.environ['OPENBLAS_NUM_THREADS'] = '1'
+import os
 import numpy as np
 import argparse
+from scipy.stats import multivariate_normal
 try:
     import RIFT.lalsimutils as lalsimutils
 except:
     print("RIFT not available.")
+
+#import scipy.integrate
 #import os
+#from scipy.special import logsumexp
+
 
 '''
 import RIFT.lalsimutils as lalsimutils
@@ -32,15 +38,14 @@ import lal
 '''
 
 
-####################### Gaussian #######################
-
+#Local variant, for when no RIFT access (e.g., Spyder)
 def m1m2_local(Mc, eta):
     """Compute component masses from Mc, eta. Returns m1 >= m2"""
     
-    #WARNING: ADDED LINES:----------
+    #WARNING: ADDED LINES VS ORIGINAL:----------
     eta = np.float64(eta)
     Mc = np.float64(Mc)
-    #-------------------------------
+    #-------------------------------------------
     
     etaV = np.array(1-4*eta,dtype=float) 
     if isinstance(eta, float):
@@ -59,12 +64,31 @@ def m1m2_local(Mc, eta):
     return m1, m2
 
 
+################## Initialization #####################
+sigma1d = 0.1
+x0 = None
+rv = None
+n_dim = None
+
 obs = None
 pop_params = None
 def initialize_me(**kwargs):
-    print("--Initializing Prior--")
+    #kwargs will take this form:
+    #{'input_line' : dat_as_array, 'param_names':param_names}
+    #where dat_as_array = dat.view((float, len(param_names))) (whatever this means)
+    #& param_names = dat.dtype.names
+    print("--- Initializing External Prior & Data ---")
     global obs
     global pop_params
+    if 'input_file_name' in kwargs:
+        input_file_name = kwargs['input_file_name']  # filename with x0 lines
+        input_file_index = kwargs['input_file_index'] # line in the input filename to use
+        #Load input file, pulling out just the indicated index (1 line):
+        obs = np.loadtxt(input_file_name)[input_file_index] #this should be obs, I think
+    elif 'input_line' in kwargs:
+        obs = kwargs['input_line']
+    
+    
     #Initial grid (mass only, assume no uncertainty for now):
     obs_name = kwargs["input_file_name"]
     obs = np.genfromtxt(obs_name,dtype='str')
@@ -73,49 +97,79 @@ def initialize_me(**kwargs):
     
     pop_params = np.genfromtxt(kwargs["eos_file_name"],dtype='str')
     
+    #his:
+    global rv
+    print(" ==== INITIALIZING EXTERNAL PRIOR === ")
+    if 'input_file_name' in kwargs:
+        input_file_name = kwargs['input_file_name']  # filename with x0 lines
+        input_file_index = kwargs['input_file_index'] # line in the input filename to use
+        # Parse input file
+        x0 = np.loadtxt(input_file_name)[input_file_index]
+    elif 'input_line' in kwargs:
+        x0 = kwargs['input_line']
+    print(" INITIAL PRIOR, MEAN IN MASSES ", x0)
+    n_dim = len(x0)
+    rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
 
-#x_offset=4
-def likelihood_evaluation(mvert):
+
+def retrieve_eos(**kwargs):
+    #kwargs will take this form:
+    #{'input_line' : dat_as_array, 'param_names':param_names}
+    #where dat_as_array = dat.view((float, len(param_names))) (whatever this means)
+    #& param_names = dat.dtype.names
+    print("Hello! I'm a liar; you've been toasted.")
     
-    from scipy.stats import multivariate_normal
+    #Open EOS file here
+
+
+####################### Gaussian #######################
+
+def likelihood_evaluation(mvert):
     
     for i in np.arange(opts.eos_start_index, opts.eos_end_index):
         #print("Case",i+1)
-        #Check that the passed uncertainty is positive (scipy will crash otherwise): 
-# =============================================================================
-#         sig_test = np.float64(pop_params[i][4])                                                                                                                                   
-#         if sig_test < 0.0:
-#             print("WARNING: sigma < 0 encountered; updating:",sig_test,"->",abs(sig_test))
-#             sig_test = abs(sig_test)
-#             pop_params[i][4] = str(sig_test)
-#         #Check that passed sigma is above min (diff from above, which allows abs(sigma) > 0.1)
-#         if sig_test < 0.1:
-#             print("WARNING: sigma < 0.1 [min] encountered; updating:",sig_test,"-> 0.1")
-#             pop_params[i][4] = 0.1
-# =============================================================================
 
         rv = multivariate_normal(pop_params[i][2:4], pop_params[i][4])
+        
         part_sum = 0.0
         for o in obs:
             #call syntax: m1m2(mchirp, eta), returns m1, m2
             m1, m2 = mvert(o[0],o[1])
             print(m1, m2)
-            part_sum += np.log(rv.pdf([mvert(m1,m2)]))
+            part_sum += rv.logpdf([mvert(m1,m2)])
         
-        pop_params[i,0] = part_sum#np.sum([np.log(rv.pdf([mvert(o[0],o[1])]))
+        pop_params[i,0] = part_sum#np.sum([rv.logpdf([mvert(o[0],o[1])])])
         #pop_params[i,0] = np.sum([np.log(rv.pdf([mvert(o[0],o[1])])) for o in obs])
         #pop_params[i,0] = np.log(likelihood_dict[i])
         pop_params[i,1] = 0.001  # nominal integration error
     
-    postfix = ''
-    if opts.conforming_output_name:
-        postfix = '+annotation.dat'
-    
-    # opts.fname is not None only when using RIFT as is in RIT-matters/20230623
-    if opts.fname is None: np.savetxt(opts.outdir+"/"+opts.fname_output_integral+postfix, pop_params[opts.eos_start_index: opts.eos_end_index], fmt = '%10s', header="lnL     sigma_lnL   " + ' '.join(dat_orig_names))
-    else: np.savetxt(opts.fname_output_integral+postfix, pop_params[opts.eos_start_index: opts.eos_end_index], fmt = '%10s', header="lnL     sigma_lnL   " + ' '.join(dat_orig_names))
-    print("Done; saved.")
+# =============================================================================
+#     postfix = ''
+#     if opts.conforming_output_name:
+#         postfix = '+annotation.dat'
+#     
+#     # opts.fname is not None only when using RIFT as is in RIT-matters/20230623
+#     if opts.fname is None: np.savetxt(opts.outdir+"/"+opts.fname_output_integral+postfix, pop_params[opts.eos_start_index: opts.eos_end_index], fmt = '%10s', header="lnL     sigma_lnL   " + ' '.join(dat_orig_names))
+#     else: np.savetxt(opts.fname_output_integral+postfix, pop_params[opts.eos_start_index: opts.eos_end_index], fmt = '%10s', header="lnL     sigma_lnL   " + ' '.join(dat_orig_names))
+#     print("Done; saved.")
+# =============================================================================
+    return pop_params    
 
+
+#RIFT
+def ln_external_prior(*X):
+    print(" ==== CALLING EXTERNAL PRIOR === ")
+    # Populate function on the grid
+    x_here = np.array(X).T
+    # note first two coordinates are mc, delta_mc! must convert!
+    dat_out = lalsimutils.convert_waveform_coordinates(x_here[:, :2], low_level_coord_names=['mc','delta_mc'],coord_names=['m1','m2'])
+    x_here[:,0] = dat_out[:,0]
+    x_here[:,1] = dat_out[:,1]
+    #    Ly = np.zeros( len(x_here[:,0] ))
+    #    print(x_here.shape, Ly.shape)
+    #    is_set = False
+    Ly = rv.logpdf(x_here)
+    return Ly
 
 
 if __name__ == '__main__':
@@ -189,6 +243,27 @@ if __name__ == '__main__':
         likelihood_evaluation(m1m2_local)
     else:
         likelihood_evaluation(lalsimutils.m1m2)
+    
+    #from external_prior_example.py:
+    x0 = [20,5] # remember these are MASSES
+    rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(len(x0))))
+    dat = rv.rvs(100).T
+    dat_alt = dat.T
+    #   print(dat.T[:5])
+    # force so m1 > m2
+    m1 = np.maximum(dat_alt[:,0], dat_alt[:,1])
+    m2 = np.minimum(dat_alt[:,0], dat_alt[:,1])
+    #    print(m1,m2)
+    # convert input colums to mc, delta_mc, as assumed by inputs
+    mcV = lalsimutils.mchirp(m1,m2)
+    deltaV =  (m1 - m2)/(m1+m2)
+    print(dat.shape, mcV.shape)
+    dat_alt[:,0] = mcV # view into dat still !
+    dat_alt[:,1] = deltaV
+    #    print(mcV, deltaV)
+    #    print(dat[:,:5])
+    out = ln_external_prior(*dat)
+    print(out)
 
 
 
