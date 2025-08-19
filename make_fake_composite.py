@@ -39,7 +39,7 @@ n_grid_post = opts.n_grid_post
 offset = opts.lnL_fixed_offset
 run_single = opts.single
 save_plot = opts.plot_composite
-gen_plot = False
+#gen_plot = False #apparently this doesn't stop it from plotting...
 
 ## Retrieve test parameters, from current working directory
 #dat =np.loadtxt("x0.dat")[0]   # these are lines with different gaussian parameters in each line, we just need ONE of them
@@ -144,26 +144,23 @@ def plot_composite(grid, idx):
     ax.set_ylabel("y mass", size="11")
     ax.tick_params(axis='both', which='major', labelsize=10) 
     fig1.tight_layout()
-# =============================================================================
-#     if gen_plot:
-#         plt.show(block=False)
-#     if save_plot:
-#         plotname = "grid-random-"+str(opts.iteration_number)+"-"+str(idx)+".png"
-#         plt.savefig(plotname,format = 'png')
-#         print("Scatterplot saved as "+plotname)
-# =============================================================================
+    #if gen_plot:
+    #    plt.show(block=False)
+    if save_plot:
+        plotname = "grid-random-"+str(opts.iteration_number)+"-"+str(idx)+".png"
+        plt.savefig(plotname,format = 'png')
+        print("Scatterplot saved as "+plotname)
     
 
 if __name__ == '__main__':
-    #Tasty defaults:
-    #TODO remove these
-    if n_grid == 200: #assume running locally 
+    #Tasty defaults, for running locally:
+    if n_grid == 200: #not a great assumption for running locally 
         n_grid = 1000
         n_grid_post = 0
         run_single = True
-        save_plot = True
-        gen_plot = False #TODO set to False
-        print("Local settings: n_grid=",n_grid,"n_grid_post=",n_grid_post,"single=",run_single,"plot: save",save_plot,"gen",gen_plot)
+        save_plot = False
+        #gen_plot = False 
+        print("Local settings: n_grid=",n_grid,"n_grid_post=",n_grid_post,"single=",run_single,"save_plot=",save_plot)#,"gen",gen_plot)
         
     #exact ("true") obs file (should contain masses or mc/eta?):
     #x = get_dat() #seems pretty unnecessary
