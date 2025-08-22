@@ -2,17 +2,16 @@
 """
 Bakey a cakey as fast as you can!
 
-* How to build a fake composite file
-** make synthetic 'true' obs : one line per 'event', each has some m1,m2 say (initgrid.txt)
-** pick a error scale in mass: sigma_mass. (hardcoded for now)
-** Draw two random numbers error1, error2 from a normal with this width: rv.rvs(scale=sigma_mass), 
-    and make mu1 = mass1 + error1 , mu2= mass2+error2
-** for each obs, draw 1000 random points from the whole prior range, (i.e., limits in mc, eta). 
-** Convert  to m1,m2, these Evaluate
-    lnL = 100 +  rv.logpdf( dat_masses)   # rv is multivariate normal, with center mu1, mu2
-** put that lnL in the .composite file output, and save, one file per 'obs'/event
-
-@author: marce
+The code builds a fake composite file:
+-Make synthetic 'true' obs : one line per 'event', each has some m1,m2 say (initgrid.txt)
+-Pick an error scale in mass: sigma_mass (hardcoded)
+-Draw two random numbers error1, error2 from a normal with this width: norm.rvs(scale=sigma_mass)
+-Make mu1 = mass1 + error1, mu2= mass2+error2
+-For each obs, draw 1000 random points from the prior range (i.e., limits in [m1,m2], or [mc,eta]). 
+-(If needed) Convert  to m1,m2
+-Evaluate
+    lnL = 100 + rv.logpdf(dat_masses)   #rv is multivariate normal, with center mu1, mu2
+-Put that lnL in the .composite file output, and save, one file per 'obs'/event
 """
 
 #! /usr/bin/env python
@@ -38,33 +37,22 @@ n_grid = opts.n_grid
 n_grid_post = opts.n_grid_post
 offset = opts.lnL_fixed_offset
 run_single = opts.single
+#Plot options:
 save_plot = opts.plot_composite
-#gen_plot = False #apparently this doesn't stop it from plotting...
+if save_plot:
+    gen_plot = True #plot has to generate to be saved
+else:
+    gen_plot = False #switched to True below to show w/o saving on local runs
 
-## Retrieve test parameters, from current working directory
-#dat =np.loadtxt("x0.dat")[0]   # these are lines with different gaussian parameters in each line, we just need ONE of them
-
-n_dim = 2#len(dat) - hardcoding 2 dimensions for now (overwritten later)
+n_dim = 2 #hardcoding 2 dimensions for now (overwritten later)
 my_dim_list = ['m1', 'm2', 's1x', 's1y', 's1z', 's2x', 's2y', 's2z']
-my_dim_ranges = [[1.5,2], [1,1.49], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1]] #old m1,m2 ranges: [15,25], [8,12]
+my_dim_ranges = [[15,25], [8,12], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1]] #mass ranges are for BHs
 indx_offset = 1 #1 if including m1,m2; 3 if starting with s1x
 
 sigma_mass = 0.1
 m1_err, m2_err = stats.norm.rvs(scale=sigma_mass, size=2)
 print("mass errors:",m1_err,m2_err)
-
-
-#unused at present; seems unnecessary
-def get_dat():
-    #dat =np.loadtxt("x0.dat")[0]   # these are lines with different gaussian parameters in each line, we just need ONE of them
-    filename = opts.base_data_file
-    xdat = np.genfromtxt(filename,dtype='str')
-    #m1 = xdat[0][0]
-    #m2 = xdat[0][1]
-    #print(m1,m2)
-    
-    return xdat
-
+        
 
 def generate_obs_grid(m1, m2, rv, idx):
     print("Generating points for masses",m1,m2)
@@ -103,12 +91,13 @@ def generate_obs_grid(m1, m2, rv, idx):
     #Default filename format: 'grid-random-0-#.txt'
     np.savetxt("grid-random-"+str(opts.iteration_number)+"-"+str(idx)+".txt",data_grid,header=prefix + (' '.join(my_dim_list)) + ' lnL lnL_err -1')
     
-    if save_plot:# or gen_plot:
+    #optional plotting:
+    if gen_plot:
         plot_composite(data_grid, idx)
+
         
 # =============================================================================
 # rv = stats.multivariate_normal(mean=dat, cov=sigma_mass**2 * np.diag(np.ones(n_dim)) ) # naive unit covariance
-# 
 # 
 # def random_draw():
 #     rv.rvs()
@@ -122,7 +111,6 @@ def generate_obs_grid(m1, m2, rv, idx):
 # #   - first make random draws from all 
 # for z in np.arange(n_grid_post):
 #     my_grid[n_grid+z, indx_offset:indx_offset+n_dim] = random_draw()
-# 
 # 
 # # Must save in a structured format
 # #   -1 m1 m2 s1x s1y s1z s2x s2y s2z lnL err ntot neff
@@ -144,8 +132,7 @@ def plot_composite(grid, idx):
     ax.set_ylabel("y mass", size="11")
     ax.tick_params(axis='both', which='major', labelsize=10) 
     fig1.tight_layout()
-    #if gen_plot:
-    #    plt.show(block=False)
+    #Plot will appear anyway when running locally; this saves it for non-local runs:
     if save_plot:
         plotname = "grid-random-"+str(opts.iteration_number)+"-"+str(idx)+".png"
         plt.savefig(plotname,format = 'png')
@@ -159,11 +146,10 @@ if __name__ == '__main__':
         n_grid_post = 0
         run_single = True
         save_plot = False
-        #gen_plot = False 
-        print("Local settings: n_grid=",n_grid,"n_grid_post=",n_grid_post,"single=",run_single,"save_plot=",save_plot)#,"gen",gen_plot)
+        gen_plot = True #local run makes the plot, but won't save it
+        print("Local settings: n_grid=",n_grid,"n_grid_post=",n_grid_post,"single=",run_single,"save_plot=",save_plot,"gen_plot=",gen_plot)
         
     #exact ("true") obs file (should contain masses or mc/eta?):
-    #x = get_dat() #seems pretty unnecessary
     x = np.genfromtxt(opts.base_data_file,dtype='str')
     n_dim = len(x[0])
     
@@ -171,8 +157,14 @@ if __name__ == '__main__':
         #Offset "exact" masses with error:
         mu1 = np.float64(x[idx][0]) + m1_err
         mu2 = np.float64(x[idx][1]) + m2_err
+        #Check to ensure m1 > m2 (needed for lalsimutils):
+        if mu2 > mu1:
+            print("Note: initial draws had mu2 > mu1. Swapping.")
+            mu3 = mu1
+            mu1 = mu2
+            mu2 = mu3
         print("mu for index "+str(idx)+":",mu1,mu2)
-        #rv = stats.multivariate_normal(mean=dat, cov=sigma_mass**2 * np.diag(np.ones(n_dim))) #naive unit covariance
+        #Generate normal with (naive) unit covariance:
         rv = stats.multivariate_normal(mean=[mu1,mu2], cov=(sigma_mass**2)*np.diag(np.ones(n_dim)))
         generate_obs_grid(mu1, mu2, rv, idx)
         if run_single:
