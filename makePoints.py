@@ -6,26 +6,37 @@ Hyperpipe modified. Part 1: point generator!
 """
 
 import numpy as np
-import argparse
+#import argparse
 import matplotlib.pyplot as plt
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--numpts',type=int, help="Number of test points to produce.")
-parser.add_argument('--outdir', type=str, help="Output eos file directory.")
-parser.add_argument('--fname-output-samples', type=str, help="Output eos file with [lnL, sigma_lnL, lambda1, lambda2, lambda3, lambda4] as the parameters.")
-parser.add_argument("--conforming-output-name",action='store_true')
+# =============================================================================
+# parser = argparse.ArgumentParser()
+# parser.add_argument('--numpts',type=int, help="Number of test points to produce.")
+# parser.add_argument('--outdir', type=str, help="Output eos file directory.")
+# parser.add_argument('--fname-output-samples', type=str, help="Output eos file with [lnL, sigma_lnL, lambda1, lambda2, lambda3, lambda4] as the parameters.")
+# parser.add_argument("--conforming-output-name",action='store_true')
+# 
+# opts = parser.parse_args()
+# 
+# npts = opts.numpts
+# 
+# if opts.outdir is None:
+#     opts.outdir = "."
+# 
+# from pathlib import Path
+# Path(opts.outdir).mkdir(parents=True, exist_ok=True)
+# del Path
+# =============================================================================
 
-opts = parser.parse_args()
+def mchirp(m1, m2):
+    """Compute chirp mass from component masses"""
+    return (m1*m2)**(3./5.)*(m1+m2)**(-1./5.)
 
-npts = opts.numpts
+def symRatio(m1, m2):#this is eta
+    """Compute symmetric mass ratio from component masses"""
+    return m1*m2/(m1+m2)/(m1+m2)
 
-if opts.outdir is None:
-    opts.outdir = "."
-
-from pathlib import Path
-Path(opts.outdir).mkdir(parents=True, exist_ok=True)
-del Path
 
 def make_Lambda(npts,mu=0,sig=1):
     #Create npts pairs of random points in a grid space
@@ -60,6 +71,55 @@ def make_better_Lambda(npts,mu1,mu2,sig):
 
     print("Fake population (" + str(npts) + " points) data created.")
     
+
+def make_different_Lambda(npts,means,sig,units):
+    #Create npts pairs of random points in a grid space    
+    from scipy.stats import multivariate_normal
+    rv = multivariate_normal(mean=means, cov=0.01*np.diag(np.ones(len(means))))
+    dat = rv.rvs(npts).T
+    dat_alt = dat.T #copy so dat is unaffected by the below
+    #Force m1 > m2:
+    m1 = np.maximum(dat_alt[:,0], dat_alt[:,1])
+    m2 = np.minimum(dat_alt[:,0], dat_alt[:,1])
+    #print(m1,m2)
+    
+    if 'mc' in units: 
+        #Convert to mc:
+        mcV = mchirp(m1,m2)
+        
+        #Convert to other:
+        otherV = []
+        if 'delta_mc' in units:
+            #Convert to delta_mc
+            otherV =  (m1 - m2)/(m1+m2)
+        elif 'eta' in units:
+            #Convert to eta:
+            otherV = symRatio(m1,m2)
+    
+        print("Shape check:",dat.shape, mcV.shape)
+        dat_alt[:,0] = mcV
+        dat_alt[:,1] = otherV
+    else:
+        print("Shape check:",dat.shape, m1.shape)
+        dat_alt[:,0] = m1
+        dat_alt[:,1] = m2
+    
+    ns = abs(np.random.normal(loc=sig, scale=sig, size=npts)) #must have sig>0
+    ns_alt = ns.T
+    
+    grid = np.zeros((npts,len(means)+3))
+    print("size of grid:",grid.shape)
+    
+    grid[:,2] = dat_alt[:,0]
+    grid[:,3] = dat_alt[:,1]
+    grid[:,4] = ns_alt[:]
+    
+    filename = 'test_pop_' + units[0] + "_" + units[1] + ".txt"
+    headers = "lnL sigma_lnL {} {} sig".format(units[0],units[1])
+    np.savetxt(filename,grid,header=headers,fmt='%.18s')
+
+    print("Fake population (" + str(npts) + " points) data created.")
+
 
 def get_Lambda():
     #Get text for describing everything:
@@ -110,7 +170,22 @@ if __name__ == "__main__":
     
     #make_Lambda(20)
     
-    make_better_Lambda(20,20,10,1)
+    num_pop = 20
+    init_means = [20,10]
+    sc = 0.5
+    out_units = ['mc','eta']
+    
+# =============================================================================
+#     grid = np.zeros((num_pop,len(init_means)+3))
+#     ns = abs(np.random.normal(loc=sc, scale=2*sc, size=num_pop))
+#     nsT = ns.T
+#     grid[:,4] = nsT
+#     print("size of ns:",grid)
+# =============================================================================
+    
+    #make_better_Lambda(num_pop,init_means[0],init_means[1],sc)
+    
+    make_different_Lambda(num_pop, init_means, sc, out_units)
     
     #get_Lambda()
     
