@@ -3,6 +3,10 @@
 External prior code for hyperpipe. 
 Possesses an initialize_me() function and a likelihood evaluation function. 
 Calculates likelihood of initialized population parameters from a norm.
+
+--!!N.B. POPULATION/EOS FILE EXPECTED TO CONTAIN THESE COLUMNS!!--
+    # lnL sigma_lnL {EOS columns} m1 m2 sig
+"sig" is an uncertainty in m1 and m2 (may allow separate sigs in future)  
 """
 
 #! /usr/bin/env python
@@ -10,7 +14,7 @@ Calculates likelihood of initialized population parameters from a norm.
 #import os
 import numpy as np
 import argparse
-from scipy.stats import multivariate_normal
+from scipy.stats import norm, multivariate_normal
 
 '''
 import RIFT.lalsimutils as lalsimutils
@@ -50,7 +54,7 @@ def m1m2_local(Mc, eta):
     return m1, m2
 
 
-def conversion_checks(params_list):
+def conversion_check(params_list):
     print("Checking given CIP coordinates:",params_list)
     
     #Find what coordinates are in the CIP list & where
@@ -74,29 +78,102 @@ def conversion_checks(params_list):
             print("WARNING: Not enough valid parameters passed! Exiting.")
         return 0, cip_idx
     
-    #TODO: This can be improved (prob switching back to int flags)...
-    #won't work while lalsimutils is imported here, though...
-    func = None
-    #if 'm1' in params_list and 'm2' in params_list:
+    func = 0
+    #this is fine b/c order will always be fixed in cip_idx:
     if cip_idx[0][0] == 'm1' and cip_idx[1][0] == 'm2':
-        func = None
+        func = 1 #no conversion
     elif cip_idx[0][0] == 'mc' and cip_idx[1][0] == 'eta':
-        #elif 'mc' in params_list and 'eta' in params_list:
-        func = m1m2_local #common conversion; local version is shortcut (hopefully)
+        func = 2 #common conversion, so use local version as shortcut
     else:
-        try:
-            import RIFT.lalsimutils as lalsimutils #this goes out of scope...
-            func = lalsimutils.convert_waveform_coordinates #will crash when called later
-        except:
-            print("Error: RIFT not available. Proceeding without conversion.")
-            func = None
+        func = 3 #lalsimutils conversion will be requested
     
     #list of lalsimutils conversions available:
     #Mceta(m1, m2)
     #m1m2(Mc,eta)
-    #...that's it. Send everything else direct to convert_waveform_coordinates() in lalsimutils
+    #...that's it. Send everything else direct to convert_waveform_coordinates()
     return func, cip_idx
+
+
+#For computing the integral of rv over the domain
+def int_rv(m2,m1):
+    rv.pdf(m1,m2)#TODO: might be some problems with rv not being initialized by b_i_c
     
+
+#Check location of pop masses to avoid integrating if possible (faster)
+def boundary_integration_checks(pop,mass_bounds):
+    #Integration bounds; currently for BH masses:
+    m_min = mass_bounds[0]
+    m_max = mass_bounds[1]
+    
+    #--NOTE: THIS ALL ASSUMES 1 UNCERTAINTY FOR 2 MASSES (2D PROBLEM)--
+    global pop_params
+    near_dist = 3*pop_params[2] #3*sigma distance cutoff from means of rv (somewhat lazy but saves time)
+    d3 = (pop_params[0]-pop_params[1])/np.sqrt(2) #d3 = (m1-m2)/sqrt(2) = distance from m1=m2 line
+    d1 = m_max - pop_params[0] #d1 = distance from right border
+    d2 = pop_params[1] - m_min #d2 = distance above bottom border
+    
+    #TODO: check that d1, d2, d3 are positive -> negative means outside pop range, should be error
+    d1c = False
+    d2c = False
+    d3c = False
+    checks = 0
+    if d1 < near_dist: d1c = True; checks += 1 #m1 close to m_max (right)
+    if d2 < near_dist: d2c = True; checks += 1 #m2 close to m_min (bottom)
+    if d3 < near_dist: d3c = True; checks += 1 #(m1,m2) close to m1=m2 (hypotenuse)
+    print("Boundary checks: m1:",d1c,"m2:",d2c,"m1=m2:",d3c,"Total:",checks)
+    
+    #d1 < 3sig --> m1 near right boundary
+    #d2 < 3sig --> m2 near bottom boundary
+    #d3 < 3sig --> (m1,m2) near m1=m2 boundary
+    
+    #TODO: The 7 Deadly Tests:
+        #1. d1 < 3sig, d2, d3 > 3sig -> CDF(d1) (close to right)
+        #2. d2 < 3sig, d1, d3 > 3sig -> CDF(d2) (close to bottom)
+        #3. d3 < 3sig, d1, d2 > 3sig -> CDF ??? (close to m1=m2 diag)
+        #4. d1, d2 < 3sig, d3 > 3sig -> int -3sig->m_max (bottom right corner)
+        #5. d1, d3 < 3sig, d2 > 3sig -> int -3sig->m_max (upper right corner)
+        #6. d2, d3 < 3sig, d1 > 3sig -> int m_min->+3sig (bottom left corner)
+        #7. d1, d2, d3 < 3sig -> int over whole region (center, large sig)
+    
+    nm_val = 0
+    #if m_max - pop_params[0] < near_dist or pop_params[1] - m_min < near_dist or d3 < near_dist:
+    if checks == 0: 
+        nm_val = 1 #nothing near edges, just set normalization to 1
+    elif checks == 1:
+        if d1c: #test 1
+            nm_val = norm.cdf(d1,loc=0,scale=pop_params[2])
+        elif d2c: #test 2
+            nm_val = norm.cdf(d2,loc=0,scale=pop_params[2])
+        elif d3c: #test 3
+            nm_val = norm.cdf(d3,loc=0,scale=pop_params[2]) #Note this still uses the 1D sigma
+        else:
+            print("Error: total checks is 1 but no distance checks are true.")
+            nm_val = 1 #failsafe
+    elif checks > 1:
+        #No choice now but to integrate...
+        from scipy.integrate import dblquad #does a double integral
+
+        #if close to 2 bounds -> corner -> integrate
+        #if narrow, reduce integration bounds to be closer to coord, so no failure
+        if pop_params[2]/(m_max-m_min) < 0.1: #sig < 10% width of mass range
+            rd_bound = 2*near_dist
+        else:
+            rd_bound = 0#TODO: THIS WON'T WORK
+        
+        if d1c and d2c and d3c: #test 7
+            #Integrate rv over domain: #TODO: This is a rectangle - need y bounds to vary to get triangle
+            nm_val, nm_err = dblquad(int_rv, m_min, m_max, m_min, m_max)
+        elif not d3c: #test 4
+            #reduce integration bounds to [m1-6sig,m_max] and [m_min,m2+6sig]
+            nm_val, nm_err = dblquad(int_rv, pop_params[0]-rd_bound, m_max, m_min, pop_params[1]+rd_bound)
+        elif not d2c: #test 5
+            nm_val, nm_err = dblquad(int_rv, pop_params[0]-rd_bound, m_max, m_min, pop_params[1]-rd_bound)
+        elif not d1c: #test 6
+            nm_val, nm_err = dblquad(int_rv, pop_params[0]-rd_bound, m_max, m_min, pop_params[1]-rd_bound)
+        else: 
+            print("Error: total checks is > 1 but no distance check combinations are true.")
+        
+    return nm_val
 
 
 ################## Initialization #####################
@@ -105,14 +182,17 @@ rv = None
 n_dim = None
 pop_params = None
 nm = 1
-cfunc = None
+cfunc = 0
 cv_params = None
 eos = None
 
-
-#For computing the integral of rv over the domain
-def int_rv(m2,m1):
-    rv.pdf(m1,m2)
+#Try to import lalsimutils (will fail on local machines)
+try:
+    import RIFT.lalsimutils as lalsimutils
+    cfunc = 4#lalsimutils.convert_waveform_coordinates 
+except:
+    print("Error: Unable to import RIFT or RIFT.lalsimutils.")
+    cfunc = 1
 
 
 def initialize_me(**kwargs):
@@ -136,14 +216,18 @@ def initialize_me(**kwargs):
     
     #----- Initialize unit conversion function -----
     global cfunc, cv_params
-    cvtest, cv_params = conversion_checks(kwargs['cip_param_names'])
+    cvtest, cv_params = conversion_check(kwargs['cip_param_names'])
     
     if cvtest == 0:
         print("ERROR: could not find valid mass conversion. Something bad will happen now....")
         return #this will break CIP, most likely #TODO: improve this reaction, if possible
     else:
-        print("Match found; data will be converted via",cvtest)
-        cfunc = cvtest
+        if cfunc != 1 or cvtest != 3: #lalsimultils imported or not needed
+            cfunc = cvtest #cvtest can be 1, 2, or 3
+            print("Data will be converted via method",cvtest)
+        else: #no lalsimutils (cfunc == 1) and it is needed (cvtest == 3)
+            print("RIFT unavailable; data will not be converted.") #i.e., cfunc = 1 still
+
     
     #----- Initialize population -----
     global pop_params
@@ -154,49 +238,39 @@ def initialize_me(**kwargs):
     #Split columns into pop and EOS:
     if cvtest != 0:
         #assume population is a go
-        mdx = kwargs['param_names'].index('m1') #TODO: assumes pop dat is always m1,m2, w/ m1 first
-        pop_params = all_params[mdx:mdx+3] #should get just the pop data (3 columns for now) #TODO: allow flex for 2 sigmas?
+        pop_params = []
+        pop_params_lib = ['m1','m2','sig']
+        for i in pop_params_lib:
+            mdx = kwargs['param_names'].index(i) 
+            pop_params.append(all_params[mdx]) 
+            #TODO: allow flex for 2 sigmas? - easy to add to pop_params_lib
     
         #cf. rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
         rv = multivariate_normal(pop_params[:2], pop_params[2]) #assumes only 2D - not great
         n_dim = len(pop_params)-1 #TODO: assumes only 1 sigma column (see above)
     else:
-        print("WARNING: No population data found in provided file!")
+        print("ERROR: Population data could not be initialized: data headers not found.")
     
     print("pop_params:",pop_params)
     print("n_dim=",n_dim)
     
     #----- Initialize EOS object -----
     #TODO: probably need to check if EOS columns provided first (need some std way to check)
-    try:
-        from RIFT.physics import EOSManager as EOSManager
-        print("Able to make EOS")
-        
-        #TODO: make it here, idk
-        
-    except:
-        print("ERROR: Unable to create EOS object.")#should only happen to local runs
+    if len(all_params) > len(pop_params)+2:#will this work? 
+        try:
+            from RIFT.physics import EOSManager as EOSManager
+            print("Able to make EOS")
+            
+            #TODO: make it here, idk
+            
+        except:
+            print("ERROR: Unable to create EOS object.")#should only happen to local runs
     
     #----- Initialize normalization constant -----
-    #check population width: if narrow width or far from edges -> nm = 1 (normal)
-    #TODO: hopefully python does short-circuiting so this won't crash if pop_params is None
-    if pop_params is not None and pop_params[2] > 0.001: #TODO: arbitrary cutoff to avoid failure from narrow integrand
-        #Integration bounds; currently for BH masses:
-        m_min = 3
-        m_max = 30
-        
-        near_dist = 3*pop_params[2] #3*sigma distance cutoff from means of rv (somewhat lazy but saves time)
-        diag_dist = (pop_params[0]-pop_params[1])/np.sqrt(2) #(m1-m2)/sqrt(2)
-        if m_max - pop_params[0] < near_dist or pop_params[1] - m_min < near_dist or diag_dist < near_dist:
-            #m_max - m1 < 3sig --> m1 near right boundary
-            #m2 - m_min < 3sig --> m2 near bottom boundary
-            #diag_dist < 3sig  --> (m1,m2) near m1=m2 boundary
-            #near edges of region shown above, so need to integrate
-            global nm
-            from scipy.integrate import dblquad #does a double integral
-            
-            #Integrate rv over domain:
-            nm, nm_err = dblquad(int_rv, m_min, m_max, m_min, m_max)
+    if pop_params is not None:
+        #check population width: if narrow width or far from edges -> nm = 1 (normal)
+        global nm
+        nm = boundary_integration_checks(pop_params,[3,30])
     #else: nm is set to 1 by default (i.e., entire normal curve is within domain)
     print("Normalization constant set to",nm)
 
@@ -225,20 +299,16 @@ def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
 
 def likelihood_evaluation(*X):
     #This looks arduous and slow for a function that will be called 1000 times in a for loop...
-    #TODO: Have to assume *X contains data in same order as cip_params given to initialize_me()
-    #This means the contents of the "obs" file must be ordered the same as the parameters given to CIP - I have no control over that here
+    #*X contains data list in same order as cip_params given to initialize_me()
     
     #NOTE: the names in cv_params are ALWAYS in standard order, but the indicies may not be
     #Convert to m1,m2 coords from whatever CIP is passing:
-    if cfunc is None:    
-        m1m2 = [X[0],X[1]] #indices need to be checked (order) #TODO: Assumes order 
-    elif cfunc == m1m2_local:
-        m1m2 = m1m2_local(X[cv_params[0][1]],X[cv_params[1][1]]) #indices need to be checked (order)
-        #How long is *X from CIP, typically? 
+    if cfunc == 1:    
+        m1m2 = [X[cv_params[0][1]],X[cv_params[1][1]]] #no conversion
+    elif cfunc == 2:
+        m1m2 = m1m2_local(X[cv_params[0][1]],X[cv_params[1][1]]) #local mc,eta conversion
     else:
-        #which one is the output coords: coord_names or low_level_coord_names?
-        #I'm pretty sure this will break b/c lalsimutils is out of scope...
-        m1m2 = cfunc([X[cv_params[0][1]],X[cv_params[1][1]]], low_level_coord_names=[cv_params[0][0],cv_params[1][0]],coord_names=['m1','m2'])
+        m1m2 = lalsimutils.convert_waveform_coordinates([X[cv_params[0][1]],X[cv_params[1][1]]], low_level_coord_names=[cv_params[0][0],cv_params[1][0]],coord_names=['m1','m2'])
         
     #Likelihood (w/ normalization constant):
     return rv.logpdf(m1m2) - np.log(nm)
