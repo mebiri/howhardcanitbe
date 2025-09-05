@@ -277,24 +277,26 @@ def initialize_me(**kwargs):
 
 
 #Get the previously-initialized EOS object,
-def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
-    '''
-    **kwargs MUST take this form:
-    {'input_line':dat_as_array, 'param_names':param_names, 'cip_param_names':coord_names}
-    where: 
-        dat_as_array = dat.view((float, len(param_names))) - an array of float values
-        param_names = dat.dtype.names - IN THIS ORDER: lnL lnL_err m1 m2 sigma (sigma same error for both m1 & m2)
-        cip_param_names = [str] - given coordinates that CIP is working in, order doesn't matter
-    '''
-    
-    if eos is not None:
-        return eos
-    else:
-        print("Hello! I've been trying to reach you about your car's extended warranty.")
-        print("Did you know that, because you own a 2004 Honda Prius, you are entitled to up to $16,000 of insurance for the next 5 years at your local Kia dealership?")
-        print("All you have to do is fill in your name, address, and registration (andgivemeallofyourmoney), and we can get you set up in just 10 minutes!")
-        print("Oh, yeah, and there's no EOS here; your code will crash now. >:)")
-
+# =============================================================================
+# def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
+#     '''
+#     **kwargs MUST take this form:
+#     {'input_line':dat_as_array, 'param_names':param_names, 'cip_param_names':coord_names}
+#     where: 
+#         dat_as_array = dat.view((float, len(param_names))) - an array of float values
+#         param_names = dat.dtype.names - IN THIS ORDER: lnL lnL_err m1 m2 sigma (sigma same error for both m1 & m2)
+#         cip_param_names = [str] - given coordinates that CIP is working in, order doesn't matter
+#     '''
+#     
+#     if eos is not None:
+#         return eos
+#     else:
+#         print("Hello! I've been trying to reach you about your car's extended warranty.")
+#         print("Did you know that, because you own a 2004 Honda Prius, you are entitled to up to $16,000 of insurance for the next 5 years at your local Kia dealership?")
+#         print("All you have to do is fill in your name, address, and registration (andgivemeallofyourmoney), and we can get you set up in just 10 minutes!")
+#         print("Oh, yeah, and there's no EOS here; your code will crash now. >:)")
+# 
+# =============================================================================
 
 ####################### LIKELIHOOD EVAL #######################
 
