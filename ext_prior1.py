@@ -99,7 +99,7 @@ def int_rv(m2,m1):
     rv.pdf(m1,m2)#TODO: might be some problems with rv not being initialized by b_i_c
     
 
-#Check location of pop masses to avoid integrating if possible (faster)
+#Check location of pop masses to avoid integrating (and importing scipy) if possible (faster)
 def boundary_integration_checks(pop,mass_bounds):
     #Integration bounds; currently for BH masses:
     m_min = mass_bounds[0]
@@ -172,6 +172,7 @@ def boundary_integration_checks(pop,mass_bounds):
             nm_val, nm_err = dblquad(int_rv, pop_params[0]-rd_bound, m_max, m_min, pop_params[1]-rd_bound)
         else: 
             print("Error: total checks is > 1 but no distance check combinations are true.")
+            nm_val = 1 #failsafe
         
     return nm_val
 
@@ -191,7 +192,7 @@ try:
     import RIFT.lalsimutils as lalsimutils
     cfunc = 4#lalsimutils.convert_waveform_coordinates 
 except:
-    print("Error: Unable to import RIFT or RIFT.lalsimutils.")
+    print("WARNING: Unable to import RIFT or RIFT.lalsimutils.")
     cfunc = 1
 
 
