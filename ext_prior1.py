@@ -6,7 +6,7 @@ Calculates likelihood of initialized population parameters from a norm.
 
 --!!N.B. POPULATION/EOS FILE EXPECTED TO CONTAIN THESE COLUMNS!!--
     # lnL sigma_lnL {EOS columns} m1 m2 sig
-"sig" is an uncertainty in m1 and m2 (may allow separate sigs in future)  
+"sig" is an uncertainty for both m1 and m2 (may allow separate sigs in future)  
 """
 
 #! /usr/bin/env python
@@ -169,7 +169,7 @@ def boundary_integration_checks(pop,mass_bounds):
         elif not d2c: #test 5
             nm_val, nm_err = dblquad(int_rv, pop_params[0]-rd_bound, m_max, m_min, pop_params[1]-rd_bound)
         elif not d1c: #test 6
-            nm_val, nm_err = dblquad(int_rv, pop_params[0]-rd_bound, m_max, m_min, pop_params[1]-rd_bound)
+            nm_val, nm_err = dblquad(int_rv, m_min, pop_params[0]+rd_bound, m_min, pop_params[1]+rd_bound)
         else: 
             print("Error: total checks is > 1 but no distance check combinations are true.")
             nm_val = 1 #failsafe
@@ -214,6 +214,7 @@ def initialize_me(**kwargs):
         all_params = np.loadtxt(input_file_name)[input_file_index] 
     elif 'input_line' in kwargs:
         all_params = kwargs['input_line']#used by CIP - single line of data from eos file
+        print("Given params:",kwargs)
     
     #----- Initialize unit conversion function -----
     global cfunc, cv_params
@@ -234,16 +235,28 @@ def initialize_me(**kwargs):
     global pop_params
     global rv
     global n_dim
+    global eos
+    eos_names = []
     
     #Expected header names: # lnL sigma_lnL g0 g1 g2 g3 m1 m2 sig
     #Split columns into pop and EOS:
     if cvtest != 0:
         #assume population is a go
         pop_params = []
-        pop_params_lib = ['m1','m2','sig']
-        for i in pop_params_lib:
-            mdx = kwargs['param_names'].index(i) 
-            pop_params.append(all_params[mdx]) 
+        pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
+        for i in kwargs['param_names'][2:]: #should be anything past lnL, sig_lnL
+            if i in pop_params_lib:
+                pop_params.append(all_params[kwargs['param_names'].index(i)])
+            else: #anything that isn't m1, m2, sig
+                eos_names.append(i)
+                eos.append(all_params[kwargs['param_names'].index(i)])
+        
+        print("Population parameters found:",pop_params_lib[:len(pop_params)],
+              "\nEOS parameters found:",eos_names)
+        
+        #for i in pop_params_lib:
+        #    mdx = kwargs['param_names'].index(i) 
+        #    pop_params.append(all_params[mdx]) 
             #TODO: allow flex for 2 sigmas? - easy to add to pop_params_lib
     
         #cf. rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
@@ -256,8 +269,7 @@ def initialize_me(**kwargs):
     print("n_dim=",n_dim)
     
     #----- Initialize EOS object -----
-    #TODO: probably need to check if EOS columns provided first (need some std way to check)
-    if len(all_params) > len(pop_params)+2:#will this work? 
+    if len(eos_names) > 0:
         try:
             from RIFT.physics import EOSManager as EOSManager
             print("Able to make EOS")
@@ -266,37 +278,41 @@ def initialize_me(**kwargs):
             
         except:
             print("ERROR: Unable to create EOS object.")#should only happen to local runs
+    else:
+        print("Warning: no EOS parameters found; no EOS object will be created.")
+        eos = None
     
     #----- Initialize normalization constant -----
-    if pop_params is not None:
+    if pop_params is not None:#TODO: This isn't rigorous enough; checks require len(pop) == 3
         #check population width: if narrow width or far from edges -> nm = 1 (normal)
         global nm
         nm = boundary_integration_checks(pop_params,[3,30])
     #else: nm is set to 1 by default (i.e., entire normal curve is within domain)
     print("Normalization constant set to",nm)
+    
+    print("----- END EXTERNAL PRIOR INITIALIZATION -----")
 
 
 #Get the previously-initialized EOS object,
-# =============================================================================
-# def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
-#     '''
-#     **kwargs MUST take this form:
-#     {'input_line':dat_as_array, 'param_names':param_names, 'cip_param_names':coord_names}
-#     where: 
-#         dat_as_array = dat.view((float, len(param_names))) - an array of float values
-#         param_names = dat.dtype.names - IN THIS ORDER: lnL lnL_err m1 m2 sigma (sigma same error for both m1 & m2)
-#         cip_param_names = [str] - given coordinates that CIP is working in, order doesn't matter
-#     '''
-#     
-#     if eos is not None:
-#         return eos
-#     else:
-#         print("Hello! I've been trying to reach you about your car's extended warranty.")
-#         print("Did you know that, because you own a 2004 Honda Prius, you are entitled to up to $16,000 of insurance for the next 5 years at your local Kia dealership?")
-#         print("All you have to do is fill in your name, address, and registration (andgivemeallofyourmoney), and we can get you set up in just 10 minutes!")
-#         print("Oh, yeah, and there's no EOS here; your code will crash now. >:)")
-# 
-# =============================================================================
+def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
+    '''
+    **kwargs MUST take this form:
+    {'input_line':dat_as_array, 'param_names':param_names, 'cip_param_names':coord_names}
+    where: 
+        dat_as_array = dat.view((float, len(param_names))) - an array of float values
+        param_names = dat.dtype.names - IN THIS ORDER: lnL lnL_err m1 m2 sigma (sigma same error for both m1 & m2)
+        cip_param_names = [str] - given coordinates that CIP is working in, order doesn't matter
+    '''
+    
+    if eos is not None:
+        return eos
+    else:
+        print("Hello! I've been trying to reach you about your car's extended warranty.")
+        print("Did you know that, because you own a 2004 Honda Prius, you are entitled to up to $16,000 of insurance for the next 5 years at your local Kia dealership?")
+        print("All you have to do is fill in your name, address, and registration (andgivemeallofyourmoney), and we can get you set up in just 10 minutes!")
+        print("Oh, yeah, and there's no EOS here; sorry. :)")
+        return None #CIP will ignore the EOS (hopefully)
+
 
 ####################### LIKELIHOOD EVAL #######################
 
