@@ -30,9 +30,11 @@ parser.add_argument("--lnL-fixed-offset",default=100,type=float,help="A large co
 parser.add_argument("--base-data-file",default='initgrid3.txt',help="filename/path of synthetic data file in #m1 m2 format.")
 parser.add_argument("--single",action='store_true',help="For testing; will only make composite file for first line in synthetic data file.")
 parser.add_argument("--plot-composite",action='store_true',help="Scatterplot of generated points, using lnL as color scale.") 
+parser.add_argument("--mode",default=2,type=int,help="Hacky fix for diff mass units, b/c no smart conversion present.")
 opts = parser.parse_args()
 
 print(opts)
+dat_file = opts.base_data_file
 n_grid = opts.n_grid
 n_grid_post = opts.n_grid_post
 offset = opts.lnL_fixed_offset
@@ -44,9 +46,14 @@ if save_plot:
 else:
     gen_plot = False #switched to True below to show w/o saving on local runs
 
+mode = opts.mode
 n_dim = 2 #hardcoding 2 dimensions for now (overwritten later)
-my_dim_list = ['m1', 'm2', 's1x', 's1y', 's1z', 's2x', 's2y', 's2z']
-my_dim_ranges = [[15,25], [8,12], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1]] #mass ranges are for BHs
+if mode == 1:
+    my_dim_list = ['m1', 'm2', 's1x', 's1y', 's1z', 's2x', 's2y', 's2z']
+    my_dim_ranges = [[15,25], [8,12], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1]] #mass ranges are for BHs
+elif mode == 2:
+    my_dim_list = ['mc', 'delta_mc', 's1x', 's1y', 's1z', 's2x', 's2y', 's2z']
+    my_dim_ranges = [[8,18], [0.1,1], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1], [-1,1]] #mass ranges are for BHs
 indx_offset = 1 #1 if including m1,m2; 3 if starting with s1x
 
 sigma_mass = 0.1
@@ -87,9 +94,12 @@ def generate_obs_grid(m1, m2, rv, idx):
     # -1 m1 m2 s1x s1y s1z s2x s2y s2z lnL lnL_err -1 #ntot neff
     prefix = "indx "
     if indx_offset >2: #i.e., started with s1x
-        prefix += "m1 m2"
+        if mode == 1: 
+            prefix += "m1 m2"
+        elif mode == 2:
+            prefix += "mc delta_mc"
     #Default filename format: 'grid-random-0-#.txt'
-    np.savetxt("grid-random-"+str(opts.iteration_number)+"-"+str(idx)+".txt",data_grid,header=prefix + (' '.join(my_dim_list)) + ' lnL lnL_err -1')
+    np.savetxt("grid-random-"+str(opts.iteration_number)+"-"+str(idx)+"-"+str(mode)+".txt",data_grid,header=prefix + (' '.join(my_dim_list)) + ' lnL lnL_err -1')
     
     #optional plotting:
     if gen_plot:
@@ -142,15 +152,16 @@ def plot_composite(grid, idx):
 if __name__ == '__main__':
     #Tasty defaults, for running locally:
     if n_grid == 200: #not a great assumption for running locally 
+        dat_file = 'initgrid5.txt'
         n_grid = 1000
         n_grid_post = 0
         run_single = True
         save_plot = False
-        gen_plot = True #local run makes the plot, but won't save it
+        gen_plot = False #local run makes the plot, but won't save it
         print("Local settings: n_grid=",n_grid,"n_grid_post=",n_grid_post,"single=",run_single,"save_plot=",save_plot,"gen_plot=",gen_plot)
         
     #exact ("true") obs file (should contain masses or mc/eta?):
-    x = np.genfromtxt(opts.base_data_file,dtype='str')
+    x = np.genfromtxt(dat_file,dtype='str')
     n_dim = len(x[0])
     
     for idx in range(len(x)):
