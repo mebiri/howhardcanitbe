@@ -31,8 +31,9 @@ import lal
 #Also most likely conversion, so faster than going thru lalsimutils (probably)
 def m1m2_local(Mc, eta):
     """Compute component masses from Mc, eta. Returns m1 >= m2"""
-    
+    print("Received:",Mc,eta)
     etaV = np.array(1-4*eta,dtype=float) 
+    print("etaV:",etaV)
     if isinstance(eta, float):
         if etaV < 0:
             etaV = 0
@@ -41,9 +42,12 @@ def m1m2_local(Mc, eta):
             etaV_sqrt = np.sqrt(etaV)
     else:
         indx_ok = etaV>=0
+        print("indx_ok:",indx_ok)
         etaV_sqrt = np.zeros(len(etaV),dtype=float)
-        etaV_sqrt[indx_ok] = np.sqrt(etaV[indx_ok])
+        print("etaV_sqrt:",etaV_sqrt)
+        etaV_sqrt[indx_ok] = np.sqrt(etaV[indx_ok]) #<-- crash is here
         etaV_sqrt[np.logical_not(indx_ok)] = 0 # set negative cases to 0, so no sqrt problems
+        print("etaV_sqrt, post:",etaV_sqrt)
     m1 = 0.5*Mc*eta**(-3./5.)*(1. + etaV_sqrt)
     m2 = 0.5*Mc*eta**(-3./5.)*(1. - etaV_sqrt)
     return m1, m2
@@ -87,11 +91,6 @@ def conversion_check(params_list):
     #m1m2(Mc,eta)
     #...that's it. Send everything else direct to convert_waveform_coordinates()
     return func, cip_idx
-
-
-#For computing the integral of rv over the domain
-def int_rv(m2,m1):
-    rv.pdf(m1,m2)
     
 
 #Check location of pop masses to avoid integrating (and importing scipy) if possible (faster)
@@ -100,14 +99,18 @@ def boundary_integration_checks(pop,mass_bounds):
     m_min = mass_bounds[0]
     m_max = mass_bounds[1]
     
-    #---NOTE: THIS ALL ASSUMES 1 UNCERTAINTY FOR 2 MASSES (2D PROBLEM)---
+    #--NOTE: THIS ASSUMES 1 UNCERTAINTY FOR 2 MASSES WITH M1 > M2 (2D PROBLEM)-
     global pop_params
     near_dist = 3*pop_params[2] #3*sigma distance cutoff from means of rv (somewhat lazy but saves time)
     d3 = (pop_params[0]-pop_params[1])/np.sqrt(2) #d3 = (m1-m2)/sqrt(2) = distance from m1=m2 line
     d1 = m_max - pop_params[0] #d1 = distance from right border
     d2 = pop_params[1] - m_min #d2 = distance above bottom border
     
-    #TODO: check that d1, d2, d3 are positive -> negative means outside pop range, should be error
+    #Check that d1, d2, d3 are positive -> negative means outside pop range
+    if d1 < 0 or d2 < 0 or d3 < 0 or pop_params[0] < m_min or pop_params[1] > m_max:
+        print("ERROR: 1 or more masses outside valid range ["+str(m_min)+","+str(m_max)+"]; cannot normalize population.")
+        return 0 #set normalization constant to 0, so lnL = -infinity
+    
     d1c = False
     d2c = False
     d3c = False
@@ -140,13 +143,12 @@ def boundary_integration_checks(pop,mass_bounds):
             print("Error: total checks is 1 but no distance checks are true.")
             nm_val = 1 #failsafe
     elif checks > 1:
-        #No choice now but to integrate...
+        #if close to 2 bounds -> corner -> No choice now but to integrate...
         from scipy.integrate import dblquad #does a double integral
 
-        #if close to 2 bounds -> corner -> integrate
         #if narrow, reduce integration bounds to be closer to coord, so no failure
         if pop_params[2]/(m_max-m_min) < 0.1: #sig < 10% width of mass range
-            #reduce integration bounds to [m1-6sig,m_max] and [m_min,m2+6sig]
+            #reduce integration bounds to m +/- 6sig:
             rxbd = pop_params[0]-(2*near_dist) #lower x bound for right side
             lxbd = pop_params[0]+(2*near_dist) #upper x bound for left corner
             tybd = pop_params[1]-(2*near_dist) #lower y bound for top corner
@@ -157,20 +159,108 @@ def boundary_integration_checks(pop,mass_bounds):
             tybd = m_min #lower y bound for top corner
             bybd = m_max #upper y bound for bottom side
         
+        global rv
+        int_rv = lambda y, x: rv.pdf(x,y)
         if d1c and d2c and d3c: #test 7
-            #Integrate rv over domain: #TODO: This is a rectangle - need y bounds to vary to get triangle
-            nm_val, nm_err = dblquad(int_rv, m_min, m_max, m_min, m_max)
+            #Integrate rv over (triangular) domain:
+            nm_val, nm_err = dblquad(int_rv, m_min, m_max, m_min, lambda x: x)
         elif not d3c: #test 4
             nm_val, nm_err = dblquad(int_rv, rxbd, m_max, m_min, bybd)
-        elif not d2c: #test 5 #TODO: have to worry about triangle here
-            nm_val, nm_err = dblquad(int_rv, rxbd, m_max, m_min, tybd)
-        elif not d1c: #test 6 #TODO: have to worry about triangle here
-            nm_val, nm_err = dblquad(int_rv, m_min, lxbd, m_min, bybd)
+        elif not d2c: #test 5 
+            nm_val, nm_err = dblquad(int_rv, rxbd, m_max, tybd, lambda x: x)
+        elif not d1c: #test 6 
+            nm_val, nm_err = dblquad(int_rv, m_min, lxbd, m_min, lambda x: x)
         else: 
             print("Error: total checks is > 1 but no distance check combinations are true.")
             nm_val = 1 #failsafe
         
     return nm_val
+
+
+def generate_eos(eos_line, eos_names, eos_param="spectral",using_eos="ur mom"):
+    print("Creating EOS object of type",eos_param,"via file",using_eos)
+    my_eos=None
+    
+    try: #test code
+        import RIFT.physics.EOSManager as EOSManager
+    except:
+        print("Note: no RIFT for EOSManager.") #test code, only on local machine
+    eos_name=using_eos #will be the mixed pop/eos file
+
+    spec_param_array = eos_line 
+    spec_params ={}
+    for i in range(len(eos_names)):
+        spec_params[eos_names[i]]=spec_param_array[i]
+    
+    eos_base = None
+    if eos_param == 'spectral':
+        #expect cols: gamma1, gamma2, gamma3, gamma4 (or fewer; must be at least 2 cols)
+        #eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
+        print("Hello! I will create a spectral EOS in future!")#test code
+    elif eos_param == 'cs_spectral' and len(spec_param_array >=4):
+        #expect cols: gamma1, gamma2, gamma3, gamma4
+        eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
+    elif eos_param == 'PP' and len(spec_param_array >=4):
+        #expect cols: logP1, gamma1, gamma2, gamma3
+        eos_base = EOSManager.EOSPiecewisePolytrope(name=eos_name,params_dict=spec_params)
+    else:
+        raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
+
+    my_eos = eos_base
+
+# =============================================================================
+#     if eos_param == 'spectral':
+#         # Will not work yet -- need to modify to parse command-line arguments
+#         spec_param_packed=eval(opts.eos_param_values) # two lists: first are 'fixed' and second are specific
+#         fixed_param_array=spec_param_packed[0]
+#         spec_param_array=spec_param_packed[1]
+#         spec_params ={}
+#         spec_params['gamma1']=spec_param_array[0]
+#         spec_params['gamma2']=spec_param_array[1]
+#         # not used anymore: p0, epsilon0 set by the LI interface
+#         spec_params['p0']=fixed_param_array[0]   
+#         spec_params['epsilon0']=fixed_param_array[1]
+#         spec_params['xmax']=fixed_param_array[2]
+#         if len(spec_param_array) <3:
+#             spec_params['gamma3']=spec_params['gamma4']=0
+#         else:
+#             spec_params['gamma3']=spec_param_array[2]
+#             spec_params['gamma4']=spec_param_array[3]
+#         eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
+#         my_eos=eos_base
+#     elif eos_param == 'cs_spectral':
+#         # Will not work yet -- need to modify to parse command-line arguments
+#         spec_param_packed=eval(opts.eos_param_values) # two lists: first are 'fixed' and second are specific
+#         fixed_param_array=spec_param_packed[0]
+#         spec_param_array=spec_param_packed[1]
+#         spec_params ={}
+#         spec_params['gamma1']=spec_param_array[0]
+#         spec_params['gamma2']=spec_param_array[1]
+#         spec_params['p0']=fixed_param_array[0]   
+#         spec_params['epsilon0']=fixed_param_array[1]
+#         spec_params['xmax']=fixed_param_array[2]
+#         spec_params['gamma3']=spec_params['gamma4']=0
+#         spec_params['gamma3']=spec_param_array[2]
+#         spec_params['gamma4']=spec_param_array[3]
+#         eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
+#         my_eos = eos_base
+#     elif 'lal_' in eos_name:
+#         eos_name = eos_name.replace('lal_','')
+#         my_eos = EOSManager.EOSLALSimulation(name=eos_name)
+#     elif 'pyr_' in eos_name:
+#         eos_name = eos_name.replace('pyr_','')
+#         my_eos = EOSManager.EOSReprimand(name=eos_name)
+#     elif 'tabular_cgs' in eos_name:
+#         eos_name = eos_name.replace('tabular_cgs','')
+#         # Format now defined by record structure needed : column data, header with 'baryon_density', 'pressure', and 'energy_density' in cgs
+#         fname =EOSManager.dirEOSTablesBase+"/tabular_" + eos_name+".dat"
+#         my_eos_dat = np.genfromtxt(fname, names=True)
+#         my_eos = EOSManager.EOSFromTabularData(name=eos_name,eos_data=my_eos_dat)
+#     else:
+#         my_eos = EOSManager.EOSFromDataFile(name=eos_name,fname =EOSManager.dirEOSTablesBase+"/" + eos_name+".dat")
+# =============================================================================
+    
+    return my_eos
 
 
 ################## Initialization #####################
@@ -214,24 +304,25 @@ def initialize_me(**kwargs):
     
     #----- Initialize unit conversion function -----
     global cfunc, cv_params
+    rift = False
+    if cfunc == 4: rift = True
     cvtest, cv_params = conversion_check(kwargs['cip_param_names'])
     
     if cvtest == 0:
         print("ERROR: could not find valid mass conversion. Something bad will happen now....")
         return #this will break CIP, most likely #TODO: improve this reaction, if possible
     else:
-        if cfunc != 1 or cvtest != 3: #lalsimultils imported or not needed
+        if (rift) or cvtest != 3: #lalsimultils imported or not needed
             cfunc = cvtest #cvtest can be 1, 2, or 3
             print("Data will be converted via method",cvtest)
         else: #no lalsimutils (cfunc == 1) and it is needed (cvtest == 3)
             print("RIFT unavailable; data will not be converted.") #i.e., cfunc = 1 still
 
-    
-    #----- Initialize population -----
+    #----- Initialize population & EOS data -----
     global pop_params
     global rv
     global n_dim
-    global eos
+    eos_dat = []
     eos_names = []
     
     #Expected header names: # lnL sigma_lnL g0 g1 g2 g3 m1 m2 sig
@@ -247,7 +338,7 @@ def initialize_me(**kwargs):
                 pop_params.append(all_params[kwargs['param_names'].index(i)])
             else: #anything that isn't m1, m2, sig
                 eos_names.append(i)
-                eos.append(all_params[kwargs['param_names'].index(i)])
+                eos_dat.append(all_params[kwargs['param_names'].index(i)])
         
         print("Population parameters found:",pop_params_names,
               "\nEOS parameters found:",eos_names)
@@ -268,17 +359,11 @@ def initialize_me(**kwargs):
     print("n_dim=",n_dim)
     
     #----- Initialize EOS object -----
-    if len(eos_names) > 0:
-        try:
-            from RIFT.physics import EOSManager as EOSManager
-            print("Able to make EOS")
-            
-            #TODO: make it here, idk
-            
-        except:
-            print("ERROR: Unable to create EOS object.")#should only happen to local runs
+    global eos
+    if len(eos_names) > 0: #and (rift):
+        eos = generate_eos(eos_dat, eos_names)
     else:
-        print("Warning: no EOS parameters found; no EOS object will be created.")
+        print("ERROR: Unable to create EOS object.")
         eos = None
     
     #----- Initialize normalization constant -----
@@ -321,7 +406,7 @@ def likelihood_evaluation(*X):
     #This looks arduous and slow for a function that will be called 1000 times in a for loop...
     #*X contains data list in same order as cip_params given to initialize_me()
     
-    #NOTE: the names in cv_params are ALWAYS in standard order, but the indicies may not be
+    #NOTE: the names in cv_params are ALWAYS in standard order, but the indices may not be
     #Convert to m1,m2 coords from whatever CIP is passing:
     if cfunc == 1:    
         m1m2 = [X[cv_params[0][1]],X[cv_params[1][1]]] #no conversion
@@ -341,7 +426,7 @@ def likelihood_evaluation(*X):
 
 def lalcutout(x_in,coord_names=['mc', 'eta'],low_level_coord_names=['m1','m2'],enforce_kerr=False,source_redshift=0):
     print("lal received:",x_in,", length:",len(x_in))
-    print("cn:",coord_names," llcn:",low_level_coord_names)
+    #print("cn:",coord_names," llcn:",low_level_coord_names)
     
     x_out = np.zeros( (len(x_in), len(coord_names) ) )
     
@@ -352,17 +437,17 @@ def lalcutout(x_in,coord_names=['mc', 'eta'],low_level_coord_names=['m1','m2'],e
             indx_p_in = low_level_coord_names.index(p)
             coord_names_reduced.remove(p)
             x_out[:,indx_p_out] = x_in[:,indx_p_in]
-    print("coord_names_reduced:",coord_names_reduced)
+    #print("coord_names_reduced:",coord_names_reduced)
             
     if 'mc' in low_level_coord_names and ('eta' in low_level_coord_names or 'delta_mc' in low_level_coord_names):
         indx_mc = low_level_coord_names.index('mc')
         eta_vals = np.zeros(len(x_in))
         
-        print("indx_mc:",indx_mc)
+        #print("indx_mc:",indx_mc)
         if ('delta_mc' in low_level_coord_names):
                 indx_delta = low_level_coord_names.index('delta_mc')
-                print("indx_delta:",indx_delta)
-                print("Shape of x_in:",x_in.shape)
+                #print("indx_delta:",indx_delta)
+                #print("Shape of x_in:",x_in.shape)
                 eta_vals = 0.25*(1- x_in[:,indx_delta]**2)
         
         if 'm1' in coord_names_reduced:
@@ -394,7 +479,7 @@ if __name__ == '__main__':
     parser.add_argument("--supplementary-likelihood-factor-function", default="likelihood_evaluation",type=str,help="With above option, specifies the specific function used as an external likelihood. EXPERTS ONLY")
     parser.add_argument("--supplementary-likelihood-factor-ini", default=None,type=str,help="With above option, specifies an ini file that is parsed (here) and passed to the preparation code, called when the module is first loaded, to configure the module. EXPERTS ONLY")
     #parser.add_argument("--supplementary-prior-code",default=None,type=str,help="Import external priors, assumed in scope as extra_prior.prior_dict_pdf, extra_prior.prior_range.  Currentlyonly supports seperable external priors")
-    parser.add_argument("--using-eos", type=str, default="test_pop_m1_m2.txt", help="Name of EOS.  Fit parameter list should physically use lambda1, lambda2 information (but need not). If starts with 'file:', uses a filename with EOS parameters ")
+    parser.add_argument("--using-eos", type=str, default="test_pop_m1_m2_eos.txt", help="Name of EOS.  Fit parameter list should physically use lambda1, lambda2 information (but need not). If starts with 'file:', uses a filename with EOS parameters ")
     parser.add_argument("--using-eos-for-prior", action='store_true', default=True, help="Alternate (hacky) implementation, which overrides using-eos and using-eos-index, to handle loading in a hyperprior")
     parser.add_argument("--using-eos-index", type=int, default=0, help="Index of EOS parameters in file.")    
     parser.add_argument("--parameter", action='append', help="Parameters used as fitting parameters AND varied at a low level to make a posterior")
@@ -404,7 +489,7 @@ if __name__ == '__main__':
     print(opts)
     
     #coordinates for CIP to use:
-    coord_names = ['mc','eta']#opts.parameter # Used  in fit
+    coord_names = ['mc','delta_mc']#opts.parameter # Used  in fit
     #if coord_names is None:
     #    coord_names = []
     #if opts.parameter_implied:
@@ -436,11 +521,10 @@ if __name__ == '__main__':
             supplemental_init = initialize_me #getattr(external_likelihood_module, 'initialize_me') #find initialize_me()
             supplemental_init(**args_init) #run initialize_me('input_line'=dat_as_array, 'param_names'=param_names)
             # CHECK IF WE RETRIEVE AN EOS from these hyperparameters too, so we can do both. 
-            if has_retrieve_eos:
+            if has_retrieve_eos and cfunc != 1:
                 fake_eos = False  # using EOS hyperparameter conversion! 
                 supplemental_eos = retrieve_eos #getattr(external_likelihood_module, 'retrieve_eos')
-                supplemental_eos(**args_init) #run retrieve_eos('input_line'=dat_as_array, 'param_names'=param_names)
-                my_eos = supplemental_eos(**args_init) #why is it called twice...?            
+                my_eos = supplemental_eos(**args_init) #run retrieve_eos('input_line'=dat_as_array, 'param_names'=param_names)           
     
             
     #Fake CIP integral:

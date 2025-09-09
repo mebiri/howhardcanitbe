@@ -121,6 +121,55 @@ def make_different_Lambda(npts,means,sig,units):
     print("Fake population (" + str(npts) + " points) data created.")
 
 
+def make_Lambda_with_eos(npts,means,sig,units,eos_cols):
+    #Create npts pairs of random points in a grid space    
+    from scipy.stats import multivariate_normal
+    rv = multivariate_normal(mean=means, cov=0.01*np.diag(np.ones(len(means))))
+    dat = rv.rvs(npts).T
+    dat_alt = dat.T #copy so dat is unaffected by the below
+    #Force m1 > m2:
+    m1 = np.maximum(dat_alt[:,0], dat_alt[:,1])
+    m2 = np.minimum(dat_alt[:,0], dat_alt[:,1])
+    #print(m1,m2)
+    
+    if 'mc' in units: 
+        #Convert to mc:
+        mcV = mchirp(m1,m2)
+        
+        #Convert to other:
+        otherV = []
+        if 'delta_mc' in units:
+            #Convert to delta_mc
+            otherV =  (m1 - m2)/(m1+m2)
+        elif 'eta' in units:
+            #Convert to eta:
+            otherV = symRatio(m1,m2)
+    
+        print("Shape check:",dat.shape, mcV.shape)
+        dat_alt[:,0] = mcV
+        dat_alt[:,1] = otherV
+    else:
+        print("Shape check:",dat.shape, m1.shape)
+        dat_alt[:,0] = m1
+        dat_alt[:,1] = m2
+    
+    ns = abs(np.random.normal(loc=sig, scale=sig, size=npts)) #must have sig>0
+    ns_alt = ns.T
+    
+    grid = np.zeros((npts,len(means)+3+len(eos_cols)))
+    print("size of grid:",grid.shape)
+    
+    grid[:,len(eos_cols)+2] = dat_alt[:,0]
+    grid[:,len(eos_cols)+3] = dat_alt[:,1]
+    grid[:,len(eos_cols)+4] = ns_alt[:]
+    
+    filename = 'test_pop_' + units[0] + "_" + units[1] + "_eos.txt"
+    headers = "lnL sigma_lnL "+" ".join(i for i in eos_cols)+" {} {} sig".format(units[0],units[1])
+    np.savetxt(filename,grid,header=headers,fmt='%.18s')
+
+    print("Fake population (" + str(npts) + " points) data created.")
+
+
 def get_Lambda():
     #Get text for describing everything:
     rv = np.genfromtxt('test_params.txt',dtype='str')
@@ -173,7 +222,7 @@ if __name__ == "__main__":
     num_pop = 20
     init_means = [20,10]
     sc = 0.5
-    out_units = ['mc','eta']
+    out_units = ['m1','m2']
     
 # =============================================================================
 #     grid = np.zeros((num_pop,len(init_means)+3))
@@ -185,7 +234,9 @@ if __name__ == "__main__":
     
     #make_better_Lambda(num_pop,init_means[0],init_means[1],sc)
     
-    make_different_Lambda(num_pop, init_means, sc, out_units)
+    #make_different_Lambda(num_pop, init_means, sc, out_units)
+    
+    make_Lambda_with_eos(num_pop, init_means, sc, out_units,["gamma1","gamma2","gamma3","gamma4"])
     
     #get_Lambda()
     
