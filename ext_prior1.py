@@ -28,14 +28,9 @@ import lal
 '''
 
 #Local variant, for when no RIFT access (e.g., Spyder)
-#Also most likely conversion, so faster than importing lalsimutils
+#Also most likely conversion, so faster than going thru lalsimutils (probably)
 def m1m2_local(Mc, eta):
     """Compute component masses from Mc, eta. Returns m1 >= m2"""
-    
-    #WARNING: ADDED LINES VS ORIGINAL:----------
-    #eta = np.float64(eta)
-    #Mc = np.float64(Mc)
-    #-------------------------------------------
     
     etaV = np.array(1-4*eta,dtype=float) 
     if isinstance(eta, float):
@@ -79,7 +74,7 @@ def conversion_check(params_list):
         return 0, cip_idx
     
     func = 0
-    #this is fine b/c order will always be fixed in cip_idx:
+    #hardcoded indices are fine b/c order will always be fixed in cip_idx:
     if cip_idx[0][0] == 'm1' and cip_idx[1][0] == 'm2':
         func = 1 #no conversion
     elif cip_idx[0][0] == 'mc' and cip_idx[1][0] == 'eta':
@@ -96,7 +91,7 @@ def conversion_check(params_list):
 
 #For computing the integral of rv over the domain
 def int_rv(m2,m1):
-    rv.pdf(m1,m2)#TODO: might be some problems with rv not being initialized by b_i_c
+    rv.pdf(m1,m2)
     
 
 #Check location of pop masses to avoid integrating (and importing scipy) if possible (faster)
@@ -105,7 +100,7 @@ def boundary_integration_checks(pop,mass_bounds):
     m_min = mass_bounds[0]
     m_max = mass_bounds[1]
     
-    #--NOTE: THIS ALL ASSUMES 1 UNCERTAINTY FOR 2 MASSES (2D PROBLEM)--
+    #---NOTE: THIS ALL ASSUMES 1 UNCERTAINTY FOR 2 MASSES (2D PROBLEM)---
     global pop_params
     near_dist = 3*pop_params[2] #3*sigma distance cutoff from means of rv (somewhat lazy but saves time)
     d3 = (pop_params[0]-pop_params[1])/np.sqrt(2) #d3 = (m1-m2)/sqrt(2) = distance from m1=m2 line
@@ -117,16 +112,12 @@ def boundary_integration_checks(pop,mass_bounds):
     d2c = False
     d3c = False
     checks = 0
-    if d1 < near_dist: d1c = True; checks += 1 #m1 close to m_max (right)
-    if d2 < near_dist: d2c = True; checks += 1 #m2 close to m_min (bottom)
-    if d3 < near_dist: d3c = True; checks += 1 #(m1,m2) close to m1=m2 (hypotenuse)
+    if d1 < near_dist: d1c = True; checks += 1 #m1 near m_max (right boundary)
+    if d2 < near_dist: d2c = True; checks += 1 #m2 near m_min (bottom boundary)
+    if d3 < near_dist: d3c = True; checks += 1 #(m1,m2) near m1=m2 (hypotenuse boundary)
     print("Boundary checks: m1:",d1c,"m2:",d2c,"m1=m2:",d3c,"Total:",checks)
     
-    #d1 < 3sig --> m1 near right boundary
-    #d2 < 3sig --> m2 near bottom boundary
-    #d3 < 3sig --> (m1,m2) near m1=m2 boundary
-    
-    #TODO: The 7 Deadly Tests:
+    #The 7 Deadly Tests:
         #1. d1 < 3sig, d2, d3 > 3sig -> CDF(d1) (close to right)
         #2. d2 < 3sig, d1, d3 > 3sig -> CDF(d2) (close to bottom)
         #3. d3 < 3sig, d1, d2 > 3sig -> CDF ??? (close to m1=m2 diag)
@@ -136,7 +127,6 @@ def boundary_integration_checks(pop,mass_bounds):
         #7. d1, d2, d3 < 3sig -> int over whole region (center, large sig)
     
     nm_val = 0
-    #if m_max - pop_params[0] < near_dist or pop_params[1] - m_min < near_dist or d3 < near_dist:
     if checks == 0: 
         nm_val = 1 #nothing near edges, just set normalization to 1
     elif checks == 1:
@@ -156,20 +146,26 @@ def boundary_integration_checks(pop,mass_bounds):
         #if close to 2 bounds -> corner -> integrate
         #if narrow, reduce integration bounds to be closer to coord, so no failure
         if pop_params[2]/(m_max-m_min) < 0.1: #sig < 10% width of mass range
-            rd_bound = 2*near_dist
+            #reduce integration bounds to [m1-6sig,m_max] and [m_min,m2+6sig]
+            rxbd = pop_params[0]-(2*near_dist) #lower x bound for right side
+            lxbd = pop_params[0]+(2*near_dist) #upper x bound for left corner
+            tybd = pop_params[1]-(2*near_dist) #lower y bound for top corner
+            bybd = pop_params[1]+(2*near_dist) #upper y bound for bottom side
         else:
-            rd_bound = 0#TODO: THIS WON'T WORK
+            rxbd = m_min #lower x bound for right side
+            lxbd = m_max #upper x bound for left corner
+            tybd = m_min #lower y bound for top corner
+            bybd = m_max #upper y bound for bottom side
         
         if d1c and d2c and d3c: #test 7
             #Integrate rv over domain: #TODO: This is a rectangle - need y bounds to vary to get triangle
             nm_val, nm_err = dblquad(int_rv, m_min, m_max, m_min, m_max)
         elif not d3c: #test 4
-            #reduce integration bounds to [m1-6sig,m_max] and [m_min,m2+6sig]
-            nm_val, nm_err = dblquad(int_rv, pop_params[0]-rd_bound, m_max, m_min, pop_params[1]+rd_bound)
-        elif not d2c: #test 5
-            nm_val, nm_err = dblquad(int_rv, pop_params[0]-rd_bound, m_max, m_min, pop_params[1]-rd_bound)
-        elif not d1c: #test 6
-            nm_val, nm_err = dblquad(int_rv, m_min, pop_params[0]+rd_bound, m_min, pop_params[1]+rd_bound)
+            nm_val, nm_err = dblquad(int_rv, rxbd, m_max, m_min, bybd)
+        elif not d2c: #test 5 #TODO: have to worry about triangle here
+            nm_val, nm_err = dblquad(int_rv, rxbd, m_max, m_min, tybd)
+        elif not d1c: #test 6 #TODO: have to worry about triangle here
+            nm_val, nm_err = dblquad(int_rv, m_min, lxbd, m_min, bybd)
         else: 
             print("Error: total checks is > 1 but no distance check combinations are true.")
             nm_val = 1 #failsafe
@@ -180,7 +176,7 @@ def boundary_integration_checks(pop,mass_bounds):
 ################## Initialization #####################
 sigma1d = 0.1
 rv = None
-n_dim = None
+n_dim = 2
 pop_params = None
 nm = 1
 cfunc = 0
@@ -243,25 +239,28 @@ def initialize_me(**kwargs):
     if cvtest != 0:
         #assume population is a go
         pop_params = []
+        pop_params_names = [] #yes this is literally just for the one print statement
         pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
         for i in kwargs['param_names'][2:]: #should be anything past lnL, sig_lnL
             if i in pop_params_lib:
+                pop_params_names.append(i)
                 pop_params.append(all_params[kwargs['param_names'].index(i)])
             else: #anything that isn't m1, m2, sig
                 eos_names.append(i)
                 eos.append(all_params[kwargs['param_names'].index(i)])
         
-        print("Population parameters found:",pop_params_lib[:len(pop_params)],
+        print("Population parameters found:",pop_params_names,
               "\nEOS parameters found:",eos_names)
         
-        #for i in pop_params_lib:
-        #    mdx = kwargs['param_names'].index(i) 
-        #    pop_params.append(all_params[mdx]) 
-            #TODO: allow flex for 2 sigmas? - easy to add to pop_params_lib
-    
-        #cf. rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
-        rv = multivariate_normal(pop_params[:2], pop_params[2]) #assumes only 2D - not great
-        n_dim = len(pop_params)-1 #TODO: assumes only 1 sigma column (see above)
+        if len(pop_params) < 3:
+            print("ERROR: Population data could not be initialized: 3 or more columns required.")
+            pop_params = None
+            #TODO: rv - could maybe treat the 2D case with an assumed sigma if len==2
+            n_dim = 0
+        else:
+            #cf. rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
+            rv = multivariate_normal(mean=pop_params[:2], cov=(pop_params[2]**2)*np.diag(np.ones(n_dim))) #assumes only 2D - not great
+            n_dim = (len(pop_params)%2)+int(len(pop_params)/2) #expect 1 sigma per mass or pair of masses
     else:
         print("ERROR: Population data could not be initialized: data headers not found.")
     
@@ -283,7 +282,7 @@ def initialize_me(**kwargs):
         eos = None
     
     #----- Initialize normalization constant -----
-    if pop_params is not None:#TODO: This isn't rigorous enough; checks require len(pop) == 3
+    if pop_params is not None:
         #check population width: if narrow width or far from edges -> nm = 1 (normal)
         global nm
         nm = boundary_integration_checks(pop_params,[3,30])
@@ -292,6 +291,8 @@ def initialize_me(**kwargs):
     
     print("----- END EXTERNAL PRIOR INITIALIZATION -----")
 
+
+####################### EOS RETRIEVAL #######################
 
 #Get the previously-initialized EOS object,
 def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
@@ -327,28 +328,58 @@ def likelihood_evaluation(*X):
     elif cfunc == 2:
         m1m2 = m1m2_local(X[cv_params[0][1]],X[cv_params[1][1]]) #local mc,eta conversion
     else:
-        m1m2 = lalsimutils.convert_waveform_coordinates([X[cv_params[0][1]],X[cv_params[1][1]]], low_level_coord_names=[cv_params[0][0],cv_params[1][0]],coord_names=['m1','m2'])
-        
+        x_in = np.asarray([[X[cv_params[0][1]],X[cv_params[1][1]]]],dtype=np.float64)
+        m1m2 = lalsimutils.convert_waveform_coordinates(x_in, low_level_coord_names=[cv_params[0][0],cv_params[1][0]],coord_names=['m1','m2'])
+        #lalsimutils.convert_waveform_coordinates
+    
     #Likelihood (w/ normalization constant):
-    return rv.logpdf(m1m2) - np.log(nm)
+    if nm == 0:
+        return -np.inf
+    else:
+        return rv.logpdf(m1m2) - np.log(nm)
 
 
-#RIFT
-# =============================================================================
-# def ln_external_prior(*X):
-#     print(" ==== CALLING EXTERNAL PRIOR === ")
-#     # Populate function on the grid
-#     x_here = np.array(X).T
-#     # note first two coordinates are mc, delta_mc! must convert!
-#     dat_out = lalsimutils.convert_waveform_coordinates(x_here[:, :2], low_level_coord_names=['mc','delta_mc'],coord_names=['m1','m2'])
-#     x_here[:,0] = dat_out[:,0]
-#     x_here[:,1] = dat_out[:,1]
-#     #    Ly = np.zeros( len(x_here[:,0] ))
-#     #    print(x_here.shape, Ly.shape)
-#     #    is_set = False
-#     Ly = rv.logpdf(x_here)
-#     return Ly
-# =============================================================================
+def lalcutout(x_in,coord_names=['mc', 'eta'],low_level_coord_names=['m1','m2'],enforce_kerr=False,source_redshift=0):
+    print("lal received:",x_in,", length:",len(x_in))
+    print("cn:",coord_names," llcn:",low_level_coord_names)
+    
+    x_out = np.zeros( (len(x_in), len(coord_names) ) )
+    
+    coord_names_reduced = coord_names.copy() 
+    for p in low_level_coord_names:
+        if p in coord_names:
+            indx_p_out = coord_names.index(p)
+            indx_p_in = low_level_coord_names.index(p)
+            coord_names_reduced.remove(p)
+            x_out[:,indx_p_out] = x_in[:,indx_p_in]
+    print("coord_names_reduced:",coord_names_reduced)
+            
+    if 'mc' in low_level_coord_names and ('eta' in low_level_coord_names or 'delta_mc' in low_level_coord_names):
+        indx_mc = low_level_coord_names.index('mc')
+        eta_vals = np.zeros(len(x_in))
+        
+        print("indx_mc:",indx_mc)
+        if ('delta_mc' in low_level_coord_names):
+                indx_delta = low_level_coord_names.index('delta_mc')
+                print("indx_delta:",indx_delta)
+                print("Shape of x_in:",x_in.shape)
+                eta_vals = 0.25*(1- x_in[:,indx_delta]**2)
+        
+        if 'm1' in coord_names_reduced:
+            m1_vals =np.zeros(len(x_in))  
+            m2_vals =np.zeros(len(x_in))  
+            m1_vals,m2_vals = m1m2_local(x_in[:,indx_mc],eta_vals)
+            indx_p_out = coord_names.index('m1')
+            x_out[:,indx_p_out] = m1_vals
+            coord_names_reduced.remove('m1')
+            if 'm2' in coord_names_reduced:
+                indx_p_out = coord_names.index('m2')
+                x_out[:,indx_p_out] = m2_vals
+                coord_names_reduced.remove('m2')
+    
+    if len(coord_names_reduced)<1:
+        return x_out
+    return x_out
 
 
 if __name__ == '__main__':    
@@ -467,8 +498,9 @@ if __name__ == '__main__':
         #print(obs)
         
         print("'Integrating' over obs.")
+        #print([X[cv_params[0][1]],X[cv_params[1][1]]])
         part_sum = 0.0
-        for i in range(len(obs)):
+        for i in range(5):#len(obs)):
             #lol what an integral....
             part_sum += supplemental_ln_likelihood(obs[i][1],obs[i][2])
         print("Final 'integral' value =",part_sum)
