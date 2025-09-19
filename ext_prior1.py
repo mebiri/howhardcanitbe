@@ -3,6 +3,7 @@
 External prior code for hyperpipe. 
 Possesses an initialize_me() function and a likelihood evaluation function. 
 Calculates likelihood of initialized population parameters from a norm.
+Also able to initial parametric EOS model, default type spectral.
 
 --!!N.B. POPULATION/EOS FILE EXPECTED TO CONTAIN THESE COLUMNS!!--
     # lnL sigma_lnL {EOS columns} m1 m2 sig
@@ -11,7 +12,6 @@ Calculates likelihood of initialized population parameters from a norm.
 
 #! /usr/bin/env python
 #os.environ['OPENBLAS_NUM_THREADS'] = '1'
-#import os
 import numpy as np
 import argparse
 from scipy.stats import norm, multivariate_normal
@@ -19,12 +19,6 @@ from scipy.stats import norm, multivariate_normal
 '''
 import RIFT.lalsimutils as lalsimutils
 from RIFT.physics import EOSManager as EOSManager
-
-from scipy.integrate import nquad
-#import EOS_param as ep
-import os
-from EOSPlotUtilities import render_eos
-import lal
 '''
 
 #Local variant, for when no RIFT access (e.g., Spyder)
@@ -45,7 +39,7 @@ def m1m2_local(Mc, eta):
         print("indx_ok:",indx_ok)
         etaV_sqrt = np.zeros(len(etaV),dtype=float)
         print("etaV_sqrt:",etaV_sqrt)
-        etaV_sqrt[indx_ok] = np.sqrt(etaV[indx_ok]) #<-- crash is here
+        etaV_sqrt[indx_ok] = np.sqrt(etaV[indx_ok])
         etaV_sqrt[np.logical_not(indx_ok)] = 0 # set negative cases to 0, so no sqrt problems
         print("etaV_sqrt, post:",etaV_sqrt)
     m1 = 0.5*Mc*eta**(-3./5.)*(1. + etaV_sqrt)
@@ -86,10 +80,6 @@ def conversion_check(params_list):
     else:
         func = 3 #lalsimutils conversion will be requested
     
-    #list of lalsimutils conversions available:
-    #Mceta(m1, m2)
-    #m1m2(Mc,eta)
-    #...that's it. Send everything else direct to convert_waveform_coordinates()
     return func, cip_idx
     
 
@@ -99,7 +89,7 @@ def boundary_integration_checks(pop,mass_bounds):
     m_min = mass_bounds[0]
     m_max = mass_bounds[1]
     
-    #--NOTE: THIS ASSUMES 1 UNCERTAINTY FOR 2 MASSES WITH M1 > M2 (2D PROBLEM)-
+    #--NOTE: THIS ASSUMES 1 UNCERTAINTY FOR 2 MASSES WITH M1 > M2 (2D PROBLEM)--
     global pop_params
     near_dist = 3*pop_params[2] #3*sigma distance cutoff from means of rv (somewhat lazy but saves time)
     d3 = (pop_params[0]-pop_params[1])/np.sqrt(2) #d3 = (m1-m2)/sqrt(2) = distance from m1=m2 line
@@ -177,16 +167,17 @@ def boundary_integration_checks(pop,mass_bounds):
     return nm_val
 
 
-def generate_eos(eos_line, eos_names, eos_param="spectral",using_eos="ur mom"):
-    print("Creating EOS object of type",eos_param,"via file",using_eos)
-    my_eos=None
+def generate_eos(eos_line, eos_names, eos_param="spectral"):
+    print("Creating EOS object of type",eos_param,"using given data line.")
     
     try: #test code
         import RIFT.physics.EOSManager as EOSManager
     except:
-        print("Note: no RIFT for EOSManager.") #test code, only on local machine
-    eos_name=using_eos #will be the mixed pop/eos file
-
+        print("ERROR: could not import EOSManager; aborting.") #test code, only on local machine
+        return None
+    eos_name="default_eos_name"
+    
+    #Better than CIP, for sure...
     spec_param_array = eos_line 
     spec_params ={}
     for i in range(len(eos_names)):
@@ -195,72 +186,17 @@ def generate_eos(eos_line, eos_names, eos_param="spectral",using_eos="ur mom"):
     eos_base = None
     if eos_param == 'spectral':
         #expect cols: gamma1, gamma2, gamma3, gamma4 (or fewer; must be at least 2 cols)
-        #eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
-        print("Hello! I will create a spectral EOS in future!")#test code
+        eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
     elif eos_param == 'cs_spectral' and len(spec_param_array >=4):
         #expect cols: gamma1, gamma2, gamma3, gamma4
-        eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
+        eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
     elif eos_param == 'PP' and len(spec_param_array >=4):
         #expect cols: logP1, gamma1, gamma2, gamma3
         eos_base = EOSManager.EOSPiecewisePolytrope(name=eos_name,params_dict=spec_params)
     else:
         raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
 
-    my_eos = eos_base
-
-# =============================================================================
-#     if eos_param == 'spectral':
-#         # Will not work yet -- need to modify to parse command-line arguments
-#         spec_param_packed=eval(opts.eos_param_values) # two lists: first are 'fixed' and second are specific
-#         fixed_param_array=spec_param_packed[0]
-#         spec_param_array=spec_param_packed[1]
-#         spec_params ={}
-#         spec_params['gamma1']=spec_param_array[0]
-#         spec_params['gamma2']=spec_param_array[1]
-#         # not used anymore: p0, epsilon0 set by the LI interface
-#         spec_params['p0']=fixed_param_array[0]   
-#         spec_params['epsilon0']=fixed_param_array[1]
-#         spec_params['xmax']=fixed_param_array[2]
-#         if len(spec_param_array) <3:
-#             spec_params['gamma3']=spec_params['gamma4']=0
-#         else:
-#             spec_params['gamma3']=spec_param_array[2]
-#             spec_params['gamma4']=spec_param_array[3]
-#         eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
-#         my_eos=eos_base
-#     elif eos_param == 'cs_spectral':
-#         # Will not work yet -- need to modify to parse command-line arguments
-#         spec_param_packed=eval(opts.eos_param_values) # two lists: first are 'fixed' and second are specific
-#         fixed_param_array=spec_param_packed[0]
-#         spec_param_array=spec_param_packed[1]
-#         spec_params ={}
-#         spec_params['gamma1']=spec_param_array[0]
-#         spec_params['gamma2']=spec_param_array[1]
-#         spec_params['p0']=fixed_param_array[0]   
-#         spec_params['epsilon0']=fixed_param_array[1]
-#         spec_params['xmax']=fixed_param_array[2]
-#         spec_params['gamma3']=spec_params['gamma4']=0
-#         spec_params['gamma3']=spec_param_array[2]
-#         spec_params['gamma4']=spec_param_array[3]
-#         eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
-#         my_eos = eos_base
-#     elif 'lal_' in eos_name:
-#         eos_name = eos_name.replace('lal_','')
-#         my_eos = EOSManager.EOSLALSimulation(name=eos_name)
-#     elif 'pyr_' in eos_name:
-#         eos_name = eos_name.replace('pyr_','')
-#         my_eos = EOSManager.EOSReprimand(name=eos_name)
-#     elif 'tabular_cgs' in eos_name:
-#         eos_name = eos_name.replace('tabular_cgs','')
-#         # Format now defined by record structure needed : column data, header with 'baryon_density', 'pressure', and 'energy_density' in cgs
-#         fname =EOSManager.dirEOSTablesBase+"/tabular_" + eos_name+".dat"
-#         my_eos_dat = np.genfromtxt(fname, names=True)
-#         my_eos = EOSManager.EOSFromTabularData(name=eos_name,eos_data=my_eos_dat)
-#     else:
-#         my_eos = EOSManager.EOSFromDataFile(name=eos_name,fname =EOSManager.dirEOSTablesBase+"/" + eos_name+".dat")
-# =============================================================================
-    
-    return my_eos
+    return eos_base    
 
 
 ################## Initialization #####################
@@ -276,7 +212,7 @@ eos = None
 #Try to import lalsimutils (will fail on local machines)
 try:
     import RIFT.lalsimutils as lalsimutils
-    cfunc = 4#lalsimutils.convert_waveform_coordinates 
+    cfunc = 4#can call lalsimutils.convert_waveform_coordinates 
 except:
     print("WARNING: Unable to import RIFT or RIFT.lalsimutils.")
     cfunc = 1
@@ -346,12 +282,14 @@ def initialize_me(**kwargs):
         if len(pop_params) < 3:
             print("ERROR: Population data could not be initialized: 3 or more columns required.")
             pop_params = None
-            #TODO: rv - could maybe treat the 2D case with an assumed sigma if len==2
+            #rv - could maybe treat the 2D case with an assumed sigma if len==2
+            #TODO: could maybe make a default rv (mean=[1,2]?) to avoid crashes?
             n_dim = 0
         else:
-            #cf. rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
-            rv = multivariate_normal(mean=pop_params[:2], cov=(pop_params[2]**2)*np.diag(np.ones(n_dim))) #assumes only 2D - not great
+            #NOTE: supports 2+1 or 2+2-type mass/sig columns. Not 3+1, etc.
             n_dim = (len(pop_params)%2)+int(len(pop_params)/2) #expect 1 sigma per mass or pair of masses
+            #cf. rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
+            rv = multivariate_normal(mean=pop_params[:n_dim], cov=(pop_params[n_dim]**2)*np.diag(np.ones(n_dim))) #assumes only 2D - not great
     else:
         print("ERROR: Population data could not be initialized: data headers not found.")
     
@@ -360,7 +298,7 @@ def initialize_me(**kwargs):
     
     #----- Initialize EOS object -----
     global eos
-    if len(eos_names) > 0: #and (rift):
+    if len(eos_names) > 0 and (rift):
         eos = generate_eos(eos_dat, eos_names)
     else:
         print("ERROR: Unable to create EOS object.")
@@ -370,7 +308,10 @@ def initialize_me(**kwargs):
     if pop_params is not None:
         #check population width: if narrow width or far from edges -> nm = 1 (normal)
         global nm
-        nm = boundary_integration_checks(pop_params,[3,30])
+        if len(pop_params) == 3:
+            nm = boundary_integration_checks(pop_params,[3,30])#only supports [m1 m2 sig]
+        else:
+            print("WARNING: unable to check population boundaries. Assuming normalized population.")
     #else: nm is set to 1 by default (i.e., entire normal curve is within domain)
     print("Normalization constant set to",nm)
     
@@ -391,6 +332,7 @@ def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
     '''
     
     if eos is not None:
+        print("Retrieving EOS Object.")
         return eos
     else:
         print("Hello! I've been trying to reach you about your car's extended warranty.")
@@ -408,14 +350,15 @@ def likelihood_evaluation(*X):
     
     #NOTE: the names in cv_params are ALWAYS in standard order, but the indices may not be
     #Convert to m1,m2 coords from whatever CIP is passing:
+    x_in = np.asarray([X[cv_params[0][1]],X[cv_params[1][1]]],dtype=np.float64).T
     if cfunc == 1:    
-        m1m2 = [X[cv_params[0][1]],X[cv_params[1][1]]] #no conversion
+        m1m2 = x_in #no conversion
     elif cfunc == 2:
-        m1m2 = m1m2_local(X[cv_params[0][1]],X[cv_params[1][1]]) #local mc,eta conversion
+        m1m2=np.asarray(m1m2_local(x_in[:,cv_params[0][1]],x_in[:,cv_params[1][1]]),dtype=np.float64).T #local mc,eta conversion
     else:
-        x_in = np.asarray([[X[cv_params[0][1]],X[cv_params[1][1]]]],dtype=np.float64)
         m1m2 = lalsimutils.convert_waveform_coordinates(x_in, low_level_coord_names=[cv_params[0][0],cv_params[1][0]],coord_names=['m1','m2'])
         #lalsimutils.convert_waveform_coordinates
+    print(m1m2[:5])
     
     #Likelihood (w/ normalization constant):
     if nm == 0:
@@ -452,7 +395,9 @@ def lalcutout(x_in,coord_names=['mc', 'eta'],low_level_coord_names=['m1','m2'],e
         
         if 'm1' in coord_names_reduced:
             m1_vals =np.zeros(len(x_in))  
-            m2_vals =np.zeros(len(x_in))  
+            m2_vals =np.zeros(len(x_in)) 
+            print("Passing to m1m2 via lal:")
+            print(x_in[:,indx_mc],eta_vals)
             m1_vals,m2_vals = m1m2_local(x_in[:,indx_mc],eta_vals)
             indx_p_out = coord_names.index('m1')
             x_out[:,indx_p_out] = m1_vals
@@ -470,7 +415,7 @@ def lalcutout(x_in,coord_names=['mc', 'eta'],low_level_coord_names=['m1','m2'],e
 if __name__ == '__main__':    
     #I'm a pretend CIP! I hold all the strings... mwahahahaha!    
     
-    #-----Adapted from util_ConstructIntrinsicPosterior.py-----
+    #-----Adapted from util_ConstructIntrinsicPosterior_GenericCoordinates.py-----
     parser = argparse.ArgumentParser()
     
     # Supplemental likelihood factors: convenient way to effectively change the mass/spin prior in arbitrary ways for example
@@ -489,13 +434,13 @@ if __name__ == '__main__':
     print(opts)
     
     #coordinates for CIP to use:
-    coord_names = ['mc','delta_mc']#opts.parameter # Used  in fit
+    coord_names = ['m1','m2']#opts.parameter # Used  in fit
     #if coord_names is None:
     #    coord_names = []
     #if opts.parameter_implied:
     #    coord_names = coord_names+opts.parameter_implied
     
-    has_retrieve_eos = False #not dealing with this yet
+    has_retrieve_eos = True #not dealing with this yet
     
     supplemental_ln_likelihood= None
     supplemental_ln_likelihood_prep =None
@@ -521,7 +466,7 @@ if __name__ == '__main__':
             supplemental_init = initialize_me #getattr(external_likelihood_module, 'initialize_me') #find initialize_me()
             supplemental_init(**args_init) #run initialize_me('input_line'=dat_as_array, 'param_names'=param_names)
             # CHECK IF WE RETRIEVE AN EOS from these hyperparameters too, so we can do both. 
-            if has_retrieve_eos and cfunc != 1:
+            if has_retrieve_eos:
                 fake_eos = False  # using EOS hyperparameter conversion! 
                 supplemental_eos = retrieve_eos #getattr(external_likelihood_module, 'retrieve_eos')
                 my_eos = supplemental_eos(**args_init) #run retrieve_eos('input_line'=dat_as_array, 'param_names'=param_names)           
@@ -545,15 +490,16 @@ if __name__ == '__main__':
         #print("obs line 1:",obs[0])
         
         #Create npts pairs of random points in a grid space 
-        x0=[20,10]
+        x0=[20,10] #N.B. Drawing m1, m2 pairs!
         rvdat = multivariate_normal(mean=x0, cov=0.01*np.diag(np.ones(len(x0))))
-        dat = rvdat.rvs(10)
+        dat = rvdat.rvs(5)
         #dat_alt = dat.T #copy so dat is unaffected by the below
         #Force m1 > m2:
         m1 = np.maximum(dat[:,0], dat[:,1])
         m2 = np.minimum(dat[:,0], dat[:,1])
         #print(m1,m2)
         
+        #Convert drawn masses to CIP coordinates as needed:
         if 'mc' in coord_names: 
             #Convert to mc:
             mcV = (m1*m2)**(3./5.)*(m1+m2)**(-1./5.)
@@ -579,15 +525,19 @@ if __name__ == '__main__':
         #obs[:,0] = -1 - technically, but I don't care
         obs[:,1] = dat[:,0]
         obs[:,2] = dat[:,1]
-        #print(obs)
+        print(obs)
         
         print("'Integrating' over obs.")
         #print([X[cv_params[0][1]],X[cv_params[1][1]]])
-        part_sum = 0.0
-        for i in range(5):#len(obs)):
-            #lol what an integral....
-            part_sum += supplemental_ln_likelihood(obs[i][1],obs[i][2])
-        print("Final 'integral' value =",part_sum)
+        likes = supplemental_ln_likelihood(obs[:,1],obs[:,2])
+        print("length of likes:",len(likes))
+# =============================================================================
+#         part_sum = 0.0
+#         for i in range(len(obs)):
+#             #lol what an integral....
+#             part_sum += supplemental_ln_likelihood(obs[i][1],obs[i][2])
+#         print("Final 'integral' value =",part_sum)
+# =============================================================================
         
        
 
