@@ -167,8 +167,29 @@ def boundary_integration_checks(pop,mass_bounds):
     return nm_val
 
 
-def generate_eos(eos_line, eos_names, eos_param="spectral"):
+def generate_eos(eos_line, eos_headers, eos_param="spectral"):
     print("Creating EOS object of type",eos_param,"using given data line.")
+    
+    eos_names = eos_headers
+    if (eos_param == "spectral" or eos_param == "cs_spectral") and eos_names[0] != "gamma1":
+        print("WARNING: Unsupported EOS names found:",eos_names,"will relabel.")
+        #NOTE: having <4 gammas with addtl. cols will cause those extra cols to be relabeled as gammas!
+        counter = 0
+        for e in eos_headers: #len>4 does useless extra loops; small time waste
+            if counter < 4: #maximum 4 gamma columns
+                eos_names[counter] = "gamma"+str(counter+1)
+                counter += 1
+        print("Relabeled names:",eos_names)
+    #TODO: add support for eos_param=='PP'
+    
+    
+    #Better than CIP, for sure...
+    spec_param_array = eos_line 
+    spec_params ={}
+
+    for i in range(len(eos_names)):
+        spec_params[eos_names[i]]=spec_param_array[i]
+    #print(spec_params)
     
     try: #test code
         import RIFT.physics.EOSManager as EOSManager
@@ -177,20 +198,14 @@ def generate_eos(eos_line, eos_names, eos_param="spectral"):
         return None
     eos_name="default_eos_name"
     
-    #Better than CIP, for sure...
-    spec_param_array = eos_line 
-    spec_params ={}
-    for i in range(len(eos_names)):
-        spec_params[eos_names[i]]=spec_param_array[i]
-    
     eos_base = None
     if eos_param == 'spectral':
         #expect cols: gamma1, gamma2, gamma3, gamma4 (or fewer; must be at least 2 cols)
         eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
-    elif eos_param == 'cs_spectral' and len(spec_param_array >=4):
+    elif eos_param == 'cs_spectral' and len(spec_param_array) >=4:
         #expect cols: gamma1, gamma2, gamma3, gamma4
         eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
-    elif eos_param == 'PP' and len(spec_param_array >=4):
+    elif eos_param == 'PP' and len(spec_param_array) >=4:
         #expect cols: logP1, gamma1, gamma2, gamma3
         eos_base = EOSManager.EOSPiecewisePolytrope(name=eos_name,params_dict=spec_params)
     else:
@@ -240,7 +255,7 @@ def initialize_me(**kwargs):
     
     #----- Initialize unit conversion function -----
     global cfunc, cv_params
-    rift = False
+    rift = True
     if cfunc == 4: rift = True
     cvtest, cv_params = conversion_check(kwargs['cip_param_names'])
     
@@ -432,6 +447,8 @@ if __name__ == '__main__':
 
     opts = parser.parse_args()
     print(opts)
+    
+    opts.using_eos = "test_pop_m1_m2_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
     
     #coordinates for CIP to use:
     coord_names = ['m1','m2']#opts.parameter # Used  in fit
