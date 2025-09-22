@@ -14,11 +14,14 @@ Also able to initial parametric EOS model, default type spectral.
 #os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np
 import argparse
-from scipy.stats import norm, multivariate_normal
+from scipy.stats import multivariate_normal
 
 '''
-import RIFT.lalsimutils as lalsimutils
-from RIFT.physics import EOSManager as EOSManager
+Imports used later in code:
+ import RIFT.physics.EOSManager as EOSManager
+ import RIFT.lalsimutils as lalsimutils
+ from scipy.stats import norm
+ from scipy.integrate import dblquad
 '''
 
 #Local variant, for when no RIFT access (e.g., Spyder)
@@ -123,6 +126,7 @@ def boundary_integration_checks(pop,mass_bounds):
     if checks == 0: 
         nm_val = 1 #nothing near edges, just set normalization to 1
     elif checks == 1:
+        from scipy.stats import norm
         if d1c: #test 1
             nm_val = norm.cdf(d1,loc=0,scale=pop_params[2])
         elif d2c: #test 2
@@ -137,7 +141,7 @@ def boundary_integration_checks(pop,mass_bounds):
         from scipy.integrate import dblquad #does a double integral
 
         #if narrow, reduce integration bounds to be closer to coord, so no failure
-        if pop_params[2]/(m_max-m_min) < 0.1: #sig < 10% width of mass range
+        if pop_params[2]/(m_max-m_min) < 0.05: #sig < 5% width of mass range
             #reduce integration bounds to m +/- 6sig:
             rxbd = pop_params[0]-(2*near_dist) #lower x bound for right side
             lxbd = pop_params[0]+(2*near_dist) #upper x bound for left corner
