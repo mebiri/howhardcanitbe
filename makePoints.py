@@ -256,7 +256,7 @@ def make_pop_with_eos(npts,mu,sig=0.2,eos_file=None,match_eos=True):
     grid[:,num_eos_cols+4] = ns_alt[:]
     
     
-    filename = 'test_2_param_'+eos_title+".txt"
+    filename = 'test_pop_eos'+eos_title+".txt"
     headers = "lnL sigma_lnL "+" ".join(i for i in eos_names)+" m1 m2 sig"
     np.savetxt(filename,grid,header=headers,fmt='%.18e')
     
