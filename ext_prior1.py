@@ -377,7 +377,7 @@ def likelihood_evaluation(*X):
     else:
         m1m2 = lalsimutils.convert_waveform_coordinates(x_in, low_level_coord_names=[cv_params[0][0],cv_params[1][0]],coord_names=['m1','m2'])
         #lalsimutils.convert_waveform_coordinates
-    print(m1m2[:5])
+    #print(m1m2[:5])
     
     #Likelihood (w/ normalization constant):
     if nm == 0:
@@ -386,6 +386,7 @@ def likelihood_evaluation(*X):
         return rv.logpdf(m1m2) - np.log(nm)
 
 
+#USED FOR TESTING ONLY---
 def lalcutout(x_in,coord_names=['mc', 'eta'],low_level_coord_names=['m1','m2'],enforce_kerr=False,source_redshift=0):
     print("lal received:",x_in,", length:",len(x_in))
     #print("cn:",coord_names," llcn:",low_level_coord_names)
@@ -549,38 +550,7 @@ if __name__ == '__main__':
         print(obs)
         
         print("'Integrating' over obs.")
-        #print([X[cv_params[0][1]],X[cv_params[1][1]]])
         likes = supplemental_ln_likelihood(obs[:,1],obs[:,2])
-        print("length of likes:",len(likes))
-# =============================================================================
-#         part_sum = 0.0
-#         for i in range(len(obs)):
-#             #lol what an integral....
-#             part_sum += supplemental_ln_likelihood(obs[i][1],obs[i][2])
-#         print("Final 'integral' value =",part_sum)
-# =============================================================================
-        
-       
-
-    #from external_prior_example.py:
-# =============================================================================
-#     x0 = [20,5] # remember these are MASSES
-#     rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(len(x0))))
-#     dat = rv.rvs(100).T
-#     dat_alt = dat.T
-#     # force so m1 > m2
-#     m1 = np.maximum(dat_alt[:,0], dat_alt[:,1])
-#     m2 = np.minimum(dat_alt[:,0], dat_alt[:,1])
-#     #    print(m1,m2)
-#     # convert input colums to mc, delta_mc, as assumed by inputs
-#     mcV = lalsimutils.mchirp(m1,m2)
-#     deltaV =  (m1 - m2)/(m1+m2)
-#     print(dat.shape, mcV.shape)
-#     dat_alt[:,0] = mcV # view into dat still !
-#     dat_alt[:,1] = deltaV
-#     
-#     out = likelihood_evaluation(*dat)
-#     print(out)
-# =============================================================================
+        print("length of likes:",len(likes))        
 
 
