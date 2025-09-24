@@ -9,30 +9,32 @@ indx_offset = 1 # 1 for m1,m2 ; 3 if I start with s1x
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--test-name",default='ciptest',type=str)
-parser.add_argument("--n-dim",default=1,type=int)
-parser.add_argument("--n-max",default=3e5,type=int)
+parser.add_argument("--n-dim",default=2,type=int)
+parser.add_argument("--n-max",default=10000000,type=int)
 parser.add_argument("--n-output-samples",default=15000,type=int)
-#parser.add_argument("--lnL-offset",default=None,type=float) # unused in this code
 parser.add_argument("--fit-method",default='rf',type=str)
-#parser.add_argument("--pool-size",default=10,type=int)
 parser.add_argument("--composite-file",default="all.net",type=str)
 parser.add_argument("--external-prior-code",default="ext_prior1",type=str)
 parser.add_argument("--external-likelihood-func",default="likelihood_evaluation",type=str)
 parser.add_argument("--eos-pop-file",default="",type=str)
+parser.add_argument("--no-plots",action='store_true',default=False)
 opts = parser.parse_args()
 
 n_dim = opts.n_dim
 
-os.chdir(opts.test_name)
+#os.chdir(opts.test_name)
 os.environ['DIR_PARAMS'] =os.getcwd()
 mc_str = str(my_dim_ranges[0]).replace(' ','')
-cmd_mass = "--mc-range " + mc_str + " --eta-range [0.1565,0.249999]  "
-cmd_params = "--parameter " +  (' --parameter '.join(my_dim_list[:n_dim])) + "  --parameter-implied LambdaTilde  "
-cmd_science = "--source-redshift 0.0099  --input-tides  --aligned-prior alignedspin-zprior  "
-cmd_fit = "--sampler-method AV --protect-coordinate-conversions  --no-downselect  --verbose  --use-precessing  --fit-method rf  --ignore-errors-in-data --no-plots  --n-max " + str(opts.n_max)  + "  --n-output-samples " + str(opts.n_output_samples)
-cmd_files = "--fname " + opts.composite_file + "  --supplementary-likelihood-factor-code '" + opts.external_prior_code + "' --supplementary-likelihood-factor-function '" + opts.external_likelihood_func + "'  "
+cmd_mass = "--mc-range " + mc_str + " --eta-range [0.1565,0.249999]  --parameter mc  --parameter-implied eta  "
+cmd_par = "--parameter-nofit delta_mc  --parameter-implied LambdaTilde  --parameter-implied xi  --parameter-implied chiMinus  --parameter-nofit s1z  --parameter-nofit s2z  "
+cmd_sci = "--source-redshift 0.0099  --input-tides  --aligned-prior alignedspin-zprior  --chi-max 0.05  "
+if opts.no_plots:
+    cmd_fit = "--sampler-method AV  --protect-coordinate-conversions  --no-downselect  --verbose  --fit-method rf  --no-plots  --n-max " + str(opts.n_max)  #+ "  --n-output-samples " + str(opts.n_output_samples)
+else:
+    cmd_fit = "--sampler-method AV  --protect-coordinate-conversions  --no-downselect  --verbose  --fit-method rf  --n-max " + str(opts.n_max)  #+ "  --n-output-samples " + str(opts.n_output_samples)
+cmd_inp = "--fname " + opts.composite_file + "  --supplementary-likelihood-factor-code '" + opts.external_prior_code + "' --supplementary-likelihood-factor-function '" + opts.external_likelihood_func + "'  "
 cmd_eos = "--using-eos '" + opts.eos_pop_file + "'  --using-eos-index 0  --using-eos-for-prior  --eos-param spectral  "
-arguments = cmd_mass + cmd_params + cmd_science + cmd_files + cmd_eos + cmd_fit # + ' > cip.log '
+arguments = cmd_mass + cmd_par + cmd_sci + cmd_inp + cmd_eos + cmd_fit # + ' > cip.log '
 #  --no-downselect  # danger using --no-downselect in general, unless fit stabilized by random points
 cmd = "./shell_wrapper_cip.sh " + arguments
 print(cmd)
