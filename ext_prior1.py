@@ -154,7 +154,7 @@ def boundary_integration_checks(pop,mass_bounds):
             bybd = m_max #upper y bound for bottom side
         
         global rv
-        int_rv = lambda y, x: rv.pdf(x,y)
+        int_rv = lambda y, x: rv.pdf([x,y])
         if d1c and d2c and d3c: #test 7
             #Integrate rv over (triangular) domain:
             nm_val, nm_err = dblquad(int_rv, m_min, m_max, m_min, lambda x: x)
@@ -328,7 +328,11 @@ def initialize_me(**kwargs):
         #check population width: if narrow width or far from edges -> nm = 1 (normal)
         global nm
         if len(pop_params) == 3:
-            nm = boundary_integration_checks(pop_params,[3,30])#only supports [m1 m2 sig]
+            if pop_params[0] < 3.0: #if m1 is NS, so is m2 b/c m1>m2
+                mbounds = [1,3] #Neutron star mass range
+            else:
+                mbounds = [3,30] #Black hole mass range
+            nm = boundary_integration_checks(pop_params,mbounds)#only supports [m1 m2 sig]
         else:
             print("WARNING: unable to check population boundaries. Assuming normalized population.")
     #else: nm is set to 1 by default (i.e., entire normal curve is within domain)
@@ -453,7 +457,7 @@ if __name__ == '__main__':
     opts = parser.parse_args()
     print(opts)
     
-    opts.using_eos = "test_pop_m1_m2_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
+    opts.using_eos = "test_pop_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
     
     #coordinates for CIP to use:
     coord_names = ['m1','m2']#opts.parameter # Used  in fit
@@ -505,14 +509,8 @@ if __name__ == '__main__':
     #        fn_passed =  lambda *x: log_likelihood_function(*x) + supplemental_ln_likelihood(*x)
         #extra_args.update({"use_lnL":True,"return_lnI":True})
         
-        #This is cute and all, but not helpful for testing.
-        #print("Accessing data file.")
-        #obsname = "grid-random-0-0.txt" #the "observations" CIP is testing
-        #obs = np.genfromtxt(obsname)
-        #print("obs line 1:",obs[0])
-        
         #Create npts pairs of random points in a grid space 
-        x0=[20,10] #N.B. Drawing m1, m2 pairs!
+        x0=[1.9,1.1] #N.B. Drawing m1, m2 pairs!
         rvdat = multivariate_normal(mean=x0, cov=0.01*np.diag(np.ones(len(x0))))
         dat = rvdat.rvs(5)
         #dat_alt = dat.T #copy so dat is unaffected by the below
