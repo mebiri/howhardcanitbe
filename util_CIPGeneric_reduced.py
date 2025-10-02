@@ -1045,7 +1045,7 @@ def fit_rf(x,y,y_errors=None,fname_export='nn_fit',verbose=False):
         print("  number of True (should be all):",ctr)
         indx_ok = np.logical_and(indx_ok, indx_ok_size)
         print("  indx_ok sample, finally:",indx_ok[:10])
-        print("  x_in[indx_ok][0] =",x_in[indx_ok][0])
+        print("  x_in[indx_ok] =",x_in[indx_ok])
         f_out[indx_ok] = rf.predict(x_in[indx_ok]) #THIS LINE HAS THE CRASH---!
         print("  f_out sample:",f_out[0])
         return f_out
@@ -1112,7 +1112,7 @@ col_eccentricity = None
 col_meanPerAno = None
 col_lambda1 = None
 col_distance = None
-if opts.input_distance:
+if opts.input_distance:#why is this done twice (see below)?
     print(" Distance input")
     col_lnL +=1
     col_distance = col_lnL -1
@@ -1140,7 +1140,7 @@ elif opts.use_eccentricity: #don't use this, currently
     else:
         col_lnL += 1
         col_eccentricity = col_lnL -1
-if opts.input_distance: #don't use this, currently
+if opts.input_distance: #don't use this, currently - why is this done twice?
     print(" Distance input")
     col_lnL +=1
 dat_orig = dat = np.loadtxt(opts.fname)
@@ -1148,6 +1148,8 @@ dat_orig = dat[dat[:,col_lnL].argsort()] # sort  http://stackoverflow.com/questi
 if col_meanPerAno: #don't use this, currently
     dat_orig[:,col_meanPerAno] = np.mod(dat_orig[:,col_meanPerAno], lalsimutils.periodic_params['meanPerAno'] ) # 2 *np.pi
 print(" Original data size = ", len(dat), dat.shape)
+print(" Original data sample:", dat[0])
+print(" col_lnL:",col_lnL)
 
 # Rescale lnL data, if requested.  Note requires user have sensible understanding of zero points of likelihood, etc  Appl
 if opts.lnL_downscale_factor:
@@ -1179,7 +1181,7 @@ for item in extra_plot_coord_names:
 
 symmetry_list=None
 if not(opts.tabular_eos_file):
-    if opts.fit_method == 'quadratic' or opts.fit_method == 'polynomial':
+    if opts.fit_method == 'quadratic' or opts.fit_method == 'polynomial':#not using
         symmetry_list =lalsimutils.symmetry_sign_exchange(coord_names)  # identify symmetry due to exchange
 mc_min = 1e10
 mc_max = -1
@@ -1192,6 +1194,7 @@ if opts.mc_range:
     mc_max = mc_cut_range[1]
     if opts.source_redshift>0:
         mc_cut_range =np.array(mc_cut_range)*(1+opts.source_redshift)  # prevent stupidity in grid selection
+print(" Initial range of mc:",opts.mc_range)
 print(" Stripping samples outside of ", mc_cut_range, " in mc")
 P= lalsimutils.ChooseWaveformParams()
 P_list_in = []
@@ -1288,16 +1291,19 @@ for line in dat:
             fac = lal.MSUN_SI
         if low_level_coord_names[x] == 'chi_pavg':
             line_out[x] = chi_pavg_out
+            if tag == 1: print("low_level_line_out["+str(x)+"] set to chi_pavg, value:",line_out[x])
         else:
             line_out[x] = P.extract_param(low_level_coord_names[x])/fac
+            if tag == 1: print("line_out["+str(x)+"] set to "+low_level_coord_names[x]+", value:",line_out[x])
         if low_level_coord_names[x] in ['mc']:
             mc_index = x
+            if tag == 1: print("mc_index set to",mc_index)
     if tag == 1: print("low level line_out:",line_out)
     dat_out_low_level_coord_names.append(line_out)
     if tag == 1: print("length of dat_out_low_level:",len(dat_out_low_level_coord_names))
 
 
-    # Update mc range
+    # Update mc range - not used
     if not(opts.mc_range):
         if tag == 1: print("Updating mc range") #shouldn't happen
         mc_here = lalsimutils.mchirp(line[1],line[2])
@@ -1395,7 +1401,7 @@ Y_err = dat_out[:,-1]
 # Save copies for later (plots)
 X_orig = X.copy()
 Y_orig = Y.copy()
-print("Repacked variables:")
+print("Repacked variables (sample line):")
 print("X:",X[0])
 print("Y:",Y[0])
 print("Y_err:",Y_err[0])
@@ -1446,12 +1452,19 @@ my_fit= None
 if opts.fit_method == 'rf':
     print( " FIT METHOD ", opts.fit_method, " IS RF ")
     # NO data truncation for NN needed?  To be *consistent*, have the code function the same way as the others
+    print("indx_ok here:",indx_ok)
     X=X[indx_ok]
     Y=Y[indx_ok] - lnL_shift
     Y_err = Y_err[indx_ok]
+    print("Post indx_ok application (sample line):")
+    print("X (length:",len(X),"):",X[0])
+    print("Y (length:",len(Y),"):",Y[0])
+    print("Y_err (length:",len(Y_err),"):",Y_err[0])
     dat_out_low_level_coord_names =     dat_out_low_level_coord_names[indx_ok]
+    print("dat_out_low_level_coord_names:",dat_out_low_level_coord_names)
     # Cap the total number of points retained, AFTER the threshold cut
     if opts.cap_points< len(Y) and opts.cap_points> 100:
+        print("Capping the total number of points retained after threshold cut")
         n_keep = opts.cap_points
         indx = np.random.choice(np.arange(len(Y)),size=n_keep,replace=False)
         Y=Y[indx]
@@ -1494,7 +1507,9 @@ if not opts.using_eos or (fake_eos):
 else:
  print("Conversion function with eos defined.")
  def convert_coords(x_in):
+    print("Converting with eos (sample):",x_in[0])
     x_out = lalsimutils.convert_waveform_coordinates_with_eos(x_in, coord_names=coord_names,low_level_coord_names=low_level_coord_names,eos_class=my_eos,no_matter1=opts.no_matter1, no_matter2=opts.no_matter2,source_redshift=source_redshift,enforce_kerr=opts.downselect_enforce_kerr)
+    print("Converted array (sample):",x_out[0])
     return x_out
 
 
@@ -1928,12 +1943,15 @@ if opts.force_no_adapt:   #probably not used
 
 # Result shifted by lnL_shift
 fn_passed = likelihood_function
+print("fn_passed, initial:",fn_passed)
 if supplemental_ln_likelihood:#USING THIS LINE - but it gets overwritten
     fn_passed =  lambda *x: likelihood_function(*x)*np.exp(supplemental_ln_likelihood(*x))
+    print("fn_passed w/ just suppl (overwritten?):",fn_passed)
 if opts.internal_use_lnL: #ALSO USING THIS LINE... (b/c AV sets this to true, for reasons)
     fn_passed = log_likelihood_function   # helps regularize large values
     if supplemental_ln_likelihood:#USING THIS
         fn_passed =  lambda *x: log_likelihood_function(*x) + supplemental_ln_likelihood(*x)
+        print("fn_passed w/ internal_use_lnL & suppl:",fn_passed)
     extra_args.update({"use_lnL":True,"return_lnI":True})
 if opts.internal_temper_log:#not using
     extra_args.update({'temper_log':True})
@@ -1942,6 +1960,7 @@ if hasattr(sampler, 'setup'):#not using?
     extra_args_here.update(extra_args)
     extra_args_here['oracle_realizations'] = oracle_realizations
     extra_args_here['lnL']  = fn_passed   # pass it to oracle specifically
+print("extra_args:",extra_args)
 # =============================================================================
 #     if use_portfolio: #not defined- commented out above
 #         print(" PORTFOLIO : setup")
@@ -1980,6 +1999,16 @@ if hasattr(sampler, 'setup'):#not using?
 # =============================================================================
     
 #CODE FAILS IN THIS CALL---
+print("sampler parameters passed:")
+print("fn:",fn_passed)
+print("llcd:",*low_level_coord_names)
+print("nmax=",int(opts.n_max))
+print("n=",n_step)
+print("neff=",opts.n_eff)
+print("tempering_adapt=",tempering_adapt)
+print("convergence_tests=",test_converged)
+print("tempering_exp=",my_exp)
+print("**extra_args:",extra_args)
 res, var, neff, dict_return = sampler.integrate(fn_passed, *low_level_coord_names,  verbose=True,nmax=int(opts.n_max),n=n_step,neff=opts.n_eff, save_intg=True,tempering_adapt=tempering_adapt, floor_level=1e-3,igrand_threshold_p=1e-3,convergence_tests=test_converged,tempering_exp=my_exp,no_protect_names=True, **extra_args)  # weight ecponent needs better choice. We are using arbitrary-name functions
 
 
