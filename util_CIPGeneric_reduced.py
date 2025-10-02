@@ -1024,34 +1024,34 @@ def fit_rf(x,y,y_errors=None,fname_export='nn_fit',verbose=False):
     ### reject points with infinities : problems for inputs
     def fn_return(x_in,rf=rf):
         print("In fn_return within fit_rf")
-        print("x_in (length:",len(x_in),"):",x_in)
+        print("  x_in (length:",len(x_in),") sample:",x_in[0])
         f_out = -lnL_default_large_negative*np.ones(len(x_in))
         # remove infinity or Nan
         indx_ok = np.all(np.isfinite(x_in),axis=-1)
-        print("indx_ok sample, initially:",indx_ok[:10])
+        print("  indx_ok sample, initially:",indx_ok[:10])
         ctr = 0
         for b in indx_ok:
             if b:
                 ctr+=1
-        print("length of indx_ok:",len(indx_ok),"; number of True:",ctr)
+        print("  length of indx_ok:",len(indx_ok),"; number of True:",ctr)
         # rf internally uses float32, so we need to remove points > 10^37 or so ! 
         #    ... this *should* never happen due to bounds constraints, but ...
         indx_ok_size = np.all( np.logical_not(np.greater(np.abs(x_in),1e37)), axis=-1)
-        print("indx_ok_size (length:",len(indx_ok_size),") sample:",indx_ok_size[:10])
+        print("  indx_ok_size (length:",len(indx_ok_size),") sample:",indx_ok_size[:10])
         ctr = 0
         for b in indx_ok_size:
             if b:
                 ctr+=1
-        print("number of True (should be all):",ctr)
+        print("  number of True (should be all):",ctr)
         indx_ok = np.logical_and(indx_ok, indx_ok_size)
-        print("indx_ok sample, finally:",indx_ok[:10])
-        print("x_in[indx_ok] =",x_in[indx_ok])
+        print("  indx_ok sample, finally:",indx_ok[:10])
+        print("  x_in[indx_ok][0] =",x_in[indx_ok][0])
         f_out[indx_ok] = rf.predict(x_in[indx_ok]) #THIS LINE HAS THE CRASH---!
-        print("f_out sample:",f_out[0])
+        print("  f_out sample:",f_out[0])
         return f_out
 
     print( " Demonstrating RF")   # debugging
-    print("Using this x:",x)
+    print(" Using this x (sample):",x[0])
     residuals = rf.predict(x)-y
     print( "    std ", np.std(residuals), np.max(y), np.max(fn_return(x)))
     return fn_return
@@ -1258,10 +1258,12 @@ for line in dat:
         if coord_names[x] == 'chi_pavg':
             chi_pavg_out = P.extract_param('chi_pavg')
             line_out[x] = chi_pavg_out
+            if tag == 1: print("line_out["+str(x)+"] set to chi_pavg, value:",line_out[x])
         elif coord_names[x] =='ordering':
             continue
         else:
             line_out[x] = P.extract_param(coord_names[x])
+            if tag == 1: print("line_out["+str(x)+"] set to "+coord_names[x]+", value:",line_out[x])
  #        line_out[x] = getattr(P, coord_names[x])
     if tag == 1: print("line_out, post-loop:",line_out)
     line_out[-2] = line[col_lnL]
