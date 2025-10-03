@@ -1054,7 +1054,7 @@ def fit_rf(x,y,y_errors=None,fname_export='nn_fit',verbose=False):
             print("  x_in[indx_ok] =",x_in[indx_ok])
         f_out[indx_ok] = rf.predict(x_in[indx_ok]) #THIS LINE HAS THE CRASH---!
         if ctr_loop < 2: print("  f_out sample:",f_out[0])
-        if ctr_loop == 0: ctr_loop += 1
+        ctr_loop += 1
         return f_out
 
     print( " Demonstrating RF")   # debugging
@@ -1760,7 +1760,6 @@ if len(low_level_coord_names) ==4:
             print("y=",y)
             print("z=",z)
             print("a=",a)
-            ctr_loop += 1
         if isinstance(x,float):
             return my_fit([x,y,z,a])+ +my_log_prior_scale([x,y,z,a])
         else:
