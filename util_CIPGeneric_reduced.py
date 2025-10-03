@@ -1005,6 +1005,7 @@ if opts.transverse_prior == 'uniform':
 #from sklearn.gaussian_process import GaussianProcessRegressor
 #from sklearn.gaussian_process.kernels import PairwiseKernel,RBF, WhiteKernel, ConstantKernel as C
 
+ctr_loop = 0
 def fit_rf(x,y,y_errors=None,fname_export='nn_fit',verbose=False):
     print("In fit_rf.")
     print("input x:",x[0])
@@ -1023,31 +1024,37 @@ def fit_rf(x,y,y_errors=None,fname_export='nn_fit',verbose=False):
 
     ### reject points with infinities : problems for inputs
     def fn_return(x_in,rf=rf):
-        print("In fn_return within fit_rf")
-        print("  x_in (length:",len(x_in),") sample:",x_in[0])
+        global ctr_loop
+        if ctr_loop < 2:
+            print("In fn_return within fit_rf")
+            print("  x_in (length:",len(x_in),") sample:",x_in[0])
         f_out = -lnL_default_large_negative*np.ones(len(x_in))
         # remove infinity or Nan
         indx_ok = np.all(np.isfinite(x_in),axis=-1)
-        print("  indx_ok sample, initially:",indx_ok[:10])
-        ctr = 0
-        for b in indx_ok:
-            if b:
-                ctr+=1
-        print("  length of indx_ok:",len(indx_ok),"; number of True:",ctr)
+        if ctr_loop < 2: 
+            print("  indx_ok sample, initially:",indx_ok[:10])
+            ctr = 0
+            for b in indx_ok:
+                if b:
+                    ctr+=1
+            print("  length of indx_ok:",len(indx_ok),"; number of True:",ctr)
         # rf internally uses float32, so we need to remove points > 10^37 or so ! 
         #    ... this *should* never happen due to bounds constraints, but ...
         indx_ok_size = np.all( np.logical_not(np.greater(np.abs(x_in),1e37)), axis=-1)
-        print("  indx_ok_size (length:",len(indx_ok_size),") sample:",indx_ok_size[:10])
-        ctr = 0
-        for b in indx_ok_size:
-            if b:
-                ctr+=1
-        print("  number of True (should be all):",ctr)
+        if ctr_loop < 2:
+            print("  indx_ok_size (length:",len(indx_ok_size),") sample:",indx_ok_size[:10])
+            ctr = 0
+            for b in indx_ok_size:
+                if b:
+                    ctr+=1
+            print("  number of True (should be all):",ctr)
         indx_ok = np.logical_and(indx_ok, indx_ok_size)
-        print("  indx_ok sample, finally:",indx_ok[:10])
-        print("  x_in[indx_ok] =",x_in[indx_ok])
+        if ctr_loop < 2:
+            print("  indx_ok sample, finally:",indx_ok[:10])
+            print("  x_in[indx_ok] =",x_in[indx_ok])
         f_out[indx_ok] = rf.predict(x_in[indx_ok]) #THIS LINE HAS THE CRASH---!
-        print("  f_out sample:",f_out[0])
+        if ctr_loop < 2: print("  f_out sample:",f_out[0])
+        if ctr_loop == 0: ctr_loop += 1
         return f_out
 
     print( " Demonstrating RF")   # debugging
@@ -1507,9 +1514,10 @@ if not opts.using_eos or (fake_eos):
 else:
  print("Conversion function with eos defined.")
  def convert_coords(x_in):
-    print("Converting with eos (sample):",x_in[0])
+    global ctr_loop
+    if ctr_loop < 2: print("Converting with eos (sample):",x_in[0])
     x_out = lalsimutils.convert_waveform_coordinates_with_eos(x_in, coord_names=coord_names,low_level_coord_names=low_level_coord_names,eos_class=my_eos,no_matter1=opts.no_matter1, no_matter2=opts.no_matter2,source_redshift=source_redshift,enforce_kerr=opts.downselect_enforce_kerr)
-    print("Converted array (sample):",x_out[0])
+    if ctr_loop < 2: print("Converted array (sample):",x_out[0])
     return x_out
 
 
@@ -1731,22 +1739,28 @@ if len(low_level_coord_names) ==3:
 
 if len(low_level_coord_names) ==4:
     print("len of low_level_coord_names is 4; defining ll funcs accordingly.")
-    def likelihood_function(x,y,z,a):  
-        print("Likelihood function received:")
-        print("x=",x)
-        print("y=",y)
-        print("z=",z)
-        print("a=",a)
+    def likelihood_function(x,y,z,a): 
+        global ctr_loop
+        if ctr_loop < 2:
+            print("Likelihood function received:")
+            print("x=",x)
+            print("y=",y)
+            print("z=",z)
+            print("a=",a)
+            ctr_loop += 1
         if isinstance(x,float):
             return np.exp(my_fit([x,y,z,a]))*my_prior_scale([x,y,z,a])
         else:
             return np.exp(my_fit(convert_coords(np.c_[x,y,z,a])))*my_prior_scale(np.c_[x,y,z,a])
     def log_likelihood_function(x,y,z,a): 
-        print("Log_Likelihood function received:")
-        print("x=",x)
-        print("y=",y)
-        print("z=",z)
-        print("a=",a)
+        global ctr_loop
+        if ctr_loop < 2:
+            print("Log_Likelihood function received:")
+            print("x=",x)
+            print("y=",y)
+            print("z=",z)
+            print("a=",a)
+            ctr_loop += 1
         if isinstance(x,float):
             return my_fit([x,y,z,a])+ +my_log_prior_scale([x,y,z,a])
         else:
@@ -2070,23 +2084,25 @@ np.savetxt(opts.fname_output_integral+".dat", [np.log(res)+lnL_shift])
 
 eos_extra = []
 annotation_header = "lnL sigmaL neff "
-if opts.using_eos and not(opts.using_eos.startswith('file:')):
-    eos_extra = [opts.using_eos]
-    annotation_header += 'eos_name '
-    if opts.eos_param == 'spectral':
-        # Should also 
-        my_eos_params = my_eos.spec_params
-        eos_extra += list(map( lambda x: str(my_eos_params[x]), ["gamma1", "gamma2", "gamma3", "gamma4", "p0", "epsilon0", "xmax"]))
-#        eos_extra += opts.eos_param
-        annotation_header += "gamma1 gamma2 gamma3 gamma4 p0 epsilon0 xmax"
-elif opts.using_eos and opts.using_eos.startswith('file:'):
-    fname = opts.using_eos.replace('file:','')
-    params_here = np.loadtxt(fname)[opts.using_eos_index][2:]
-    linefirst =''
-    with open(fname) as f:
-        linefirst = f.readline()
-    linefirst = linefirst[2:]
-    annotation_header = linefirst # this will/must be lnL sigma_lnL and then parameter names, which we want to preserve
+# =============================================================================#THIS CAUSES A CRASH in O4d
+# if opts.using_eos and not(opts.using_eos.startswith('file:')):
+#     eos_extra = [opts.using_eos]
+#     annotation_header += 'eos_name '
+#     if opts.eos_param == 'spectral':
+#         # Should also 
+#         my_eos_params = my_eos.spec_params
+#         eos_extra += list(map( lambda x: str(my_eos_params[x]), ["gamma1", "gamma2", "gamma3", "gamma4", "p0", "epsilon0", "xmax"]))
+# #        eos_extra += opts.eos_param
+#         annotation_header += "gamma1 gamma2 gamma3 gamma4 p0 epsilon0 xmax"
+# elif opts.using_eos and opts.using_eos.startswith('file:'):
+#     fname = opts.using_eos.replace('file:','')
+#     params_here = np.loadtxt(fname)[opts.using_eos_index][2:]
+#     linefirst =''
+#     with open(fname) as f:
+#         linefirst = f.readline()
+#     linefirst = linefirst[2:]
+#     annotation_header = linefirst # this will/must be lnL sigma_lnL and then parameter names, which we want to preserve
+# =============================================================================
 with open(opts.fname_output_integral+"+annotation.dat", 'w') as file_out:
   if not(opts.using_eos) or not(opts.using_eos.startswith('file:')):
     str_out =list( map(str,[np.log(res), np.sqrt(var)/res, neff]))
