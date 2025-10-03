@@ -2561,11 +2561,13 @@ for indx_here in indx_list:
         Pgrid.ampO =opts.amplitude_order
         Pgrid.phaseO =opts.phase_order
         
-        # Set fixed parameters
-        if opts.fixed_parameter is not None:
-            for i, p in enumerate(opts.fixed_parameter):
-                fac = lal.MSUN_SI if p in ["mc", "mtot", "m1", "m2"] else 1.0
-                Pgrid.assign_param(p, fac * float(opts.fixed_parameter_value[i]))
+        # Set fixed parameters - not in opts argument list
+# =============================================================================
+#         if opts.fixed_parameter is not None:
+#             for i, p in enumerate(opts.fixed_parameter):
+#                 fac = lal.MSUN_SI if p in ["mc", "mtot", "m1", "m2"] else 1.0
+#                 Pgrid.assign_param(p, fac * float(opts.fixed_parameter_value[i]))
+# =============================================================================
 
         # Downselect.
         # for param in downselect_dict:
