@@ -2914,10 +2914,10 @@ if opts.using_eos and not(opts.using_eos.startswith('file:')):
         # Should also 
         my_eos_params = my_eos.spec_params
         #eos_extra += list(map( lambda x: str(my_eos_params[x]), ["gamma1", "gamma2", "gamma3", "gamma4", "p0", "epsilon0", "xmax"]))
-        eos_extra += list(map( lambda x: str(my_eos_params[x]), ["gamma1", "gamma2", "gamma3", "gamma4", "epsilon0", "xmax"]))
+        eos_extra += list(map( lambda x: str(my_eos_params[x]), ["gamma1", "gamma2", "gamma3", "gamma4"]))
 #        eos_extra += opts.eos_param
         #annotation_header += "gamma1 gamma2 gamma3 gamma4 p0 epsilon0 xmax"
-        annotation_header += "gamma1 gamma2 gamma3 gamma4 epsilon0 xmax"
+        annotation_header += "gamma1 gamma2 gamma3 gamma4"
 elif opts.using_eos and opts.using_eos.startswith('file:'):
     fname = opts.using_eos.replace('file:','')
     params_here = np.loadtxt(fname)[opts.using_eos_index][2:]
