@@ -50,6 +50,7 @@ def m1m2_local(Mc, eta):
     return m1, m2
 
 
+#Exists to reduce time spent running thru lalsimutils
 def conversion_check(params_list):
     print("Checking given CIP coordinates:",params_list)
     
@@ -171,21 +172,22 @@ def boundary_integration_checks(pop,mass_bounds):
     return nm_val
 
 
+#NOTE: ONLY THESE EOS_PARAMS HANDLED CURRENTLY: spectral, cs_spectral, PP
 def generate_eos(eos_line, eos_headers, eos_param="spectral"):
     print("Creating EOS object of type",eos_param,"using given data line.")
     
     eos_names = eos_headers
-    if (eos_param == "spectral" or eos_param == "cs_spectral") and eos_names[0] != "gamma1":
-        print("WARNING: Unsupported EOS names found:",eos_names,"will relabel.")
-        #NOTE: having <4 gammas with addtl. cols will cause those extra cols to be relabeled as gammas!
+    if ((eos_param == "spectral" or eos_param == "cs_spectral") and eos_names[0] != "gamma1") or (eos_param=="PP" and eos_names[1] != "gamma1"):
+        print("WARNING: Unsupported gamma labels in EOS names found:",eos_names,"will relabel.")
         counter = 0
-        for e in eos_headers: #len>4 does useless extra loops; small time waste
-            if counter < 4: #maximum 4 gamma columns
-                eos_names[counter] = "gamma"+str(counter+1)
+        indx= 0
+        while counter < 4 and indx < len(eos_headers):#max 4 gamma cols, or stop at end of list
+            if eos_headers[indx][0] == 'g' and eos_headers[indx][-1] == str(counter):#ensure gamma col
                 counter += 1
-        print("Relabeled names:",eos_names)
-    #TODO: add support for eos_param=='PP'
-    
+                eos_names[indx] = "gamma"+str(counter)
+            indx+=1
+        print("Relabeled EOS headers:",eos_names)  
+        #TODO: may need to handle re-sorting for spectral types if g1 not first, as a precaution
     
     #Better than CIP, for sure...
     spec_param_array = eos_line 
@@ -200,8 +202,8 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral"):
     except:
         print("ERROR: could not import EOSManager; aborting.") #test code, only on local machine
         return None
-    eos_name="default_eos_name"
     
+    eos_name="default_eos_name"
     eos_base = None
     if eos_param == 'spectral':
         #expect cols: gamma1, gamma2, gamma3, gamma4 (or fewer; must be at least 2 cols)
@@ -380,7 +382,7 @@ def likelihood_evaluation(*X):
         m1m2=np.asarray(m1m2_local(x_in[:,cv_params[0][1]],x_in[:,cv_params[1][1]]),dtype=np.float64).T #local mc,eta conversion
     else:
         m1m2 = lalsimutils.convert_waveform_coordinates(x_in, low_level_coord_names=[cv_params[0][0],cv_params[1][0]],coord_names=['m1','m2'])
-        #lalsimutils.convert_waveform_coordinates
+        #lalsimutils.convert_waveform_coordinates  lalcutout - for local testing
     #print(m1m2[:5])
     
     #Likelihood (w/ normalization constant):
@@ -444,11 +446,9 @@ if __name__ == '__main__':
     
     # Supplemental likelihood factors: convenient way to effectively change the mass/spin prior in arbitrary ways for example
     # Note this supplemental factor is passed the *fitting* arguments, directly.  Use with extreme caution, since we often change the dimension in a DAG 
-    parser.add_argument("--supplementary-likelihood-factor-code", default="ext_prior1",type=str,help="Import a module (in your pythonpath!) containing a supplementary factor for the likelihood.  Used to impose supplementary external priors of arbitrary complexity and external dependence (e.g., external astro priors). EXPERTS-ONLY")
-    parser.add_argument("--supplementary-likelihood-factor-function", default="likelihood_evaluation",type=str,help="With above option, specifies the specific function used as an external likelihood. EXPERTS ONLY")
-    parser.add_argument("--supplementary-likelihood-factor-ini", default=None,type=str,help="With above option, specifies an ini file that is parsed (here) and passed to the preparation code, called when the module is first loaded, to configure the module. EXPERTS ONLY")
-    #parser.add_argument("--supplementary-prior-code",default=None,type=str,help="Import external priors, assumed in scope as extra_prior.prior_dict_pdf, extra_prior.prior_range.  Currentlyonly supports seperable external priors")
-    parser.add_argument("--using-eos", type=str, default="test_pop_m1_m2_eos.txt", help="Name of EOS.  Fit parameter list should physically use lambda1, lambda2 information (but need not). If starts with 'file:', uses a filename with EOS parameters ")
+    parser.add_argument("--supplementary-likelihood-factor-code", default="ext_prior1",type=str,help="Import a module (in your pythonpath!) containing a supplementary factor for the likelihood.")
+    parser.add_argument("--supplementary-likelihood-factor-function", default="likelihood_evaluation",type=str,help="With above option, specifies the specific function used as an external likelihood.")
+    parser.add_argument("--using-eos", type=str, default="test_pop_m1_m2_eos.txt", help="Name of EOS.  Fit parameter list should physically use lambda1, lambda2 information (but need not).")
     parser.add_argument("--using-eos-for-prior", action='store_true', default=True, help="Alternate (hacky) implementation, which overrides using-eos and using-eos-index, to handle loading in a hyperprior")
     parser.add_argument("--using-eos-index", type=int, default=0, help="Index of EOS parameters in file.")    
     parser.add_argument("--parameter", action='append', help="Parameters used as fitting parameters AND varied at a low level to make a posterior")
