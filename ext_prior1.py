@@ -309,6 +309,13 @@ def initialize_me(**kwargs):
         else:
             #NOTE: supports 2+1 or 2+2-type mass/sig columns. Not 3+1, etc.
             n_dim = (len(pop_params)%2)+int(len(pop_params)/2) #expect 1 sigma per mass or pair of masses
+            
+            #check 0 < sig < 1 (protection against puffing):
+            if abs(pop_params[n_dim]) >= 1.0:
+                pop_params[n_dim] = 0.99
+            else:
+                pop_params[n_dim] = abs(pop_params[n_dim])
+            
             #cf. rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
             rv = multivariate_normal(mean=pop_params[:n_dim], cov=(pop_params[n_dim]**2)*np.diag(np.ones(n_dim))) #assumes only 2D - not great
     else:
