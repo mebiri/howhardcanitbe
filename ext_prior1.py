@@ -28,9 +28,9 @@ Imports used later in code:
 #Also most likely conversion, so faster than going thru lalsimutils (probably)
 def m1m2_local(Mc, eta):
     """Compute component masses from Mc, eta. Returns m1 >= m2"""
-    print("Received:",Mc,eta)
+    #print("Received:",Mc,eta)
     etaV = np.array(1-4*eta,dtype=float) 
-    print("etaV:",etaV)
+    #print("etaV:",etaV)
     if isinstance(eta, float):
         if etaV < 0:
             etaV = 0
@@ -39,12 +39,12 @@ def m1m2_local(Mc, eta):
             etaV_sqrt = np.sqrt(etaV)
     else:
         indx_ok = etaV>=0
-        print("indx_ok:",indx_ok)
+        #print("indx_ok:",indx_ok)
         etaV_sqrt = np.zeros(len(etaV),dtype=float)
-        print("etaV_sqrt:",etaV_sqrt)
+        #print("etaV_sqrt:",etaV_sqrt)
         etaV_sqrt[indx_ok] = np.sqrt(etaV[indx_ok])
         etaV_sqrt[np.logical_not(indx_ok)] = 0 # set negative cases to 0, so no sqrt problems
-        print("etaV_sqrt, post:",etaV_sqrt)
+        #print("etaV_sqrt, post:",etaV_sqrt)
     m1 = 0.5*Mc*eta**(-3./5.)*(1. + etaV_sqrt)
     m2 = 0.5*Mc*eta**(-3./5.)*(1. - etaV_sqrt)
     return m1, m2
@@ -311,8 +311,8 @@ def initialize_me(**kwargs):
             n_dim = (len(pop_params)%2)+int(len(pop_params)/2) #expect 1 sigma per mass or pair of masses
             
             #check 0 < sig < 1 (protection against puffing):
-            if abs(pop_params[n_dim]) >= 1.0:
-                pop_params[n_dim] = 0.99
+            if abs(pop_params[n_dim]) >= 0.5:
+                pop_params[n_dim] = 0.49
             else:
                 pop_params[n_dim] = abs(pop_params[n_dim])
             
