@@ -5,9 +5,11 @@ Possesses an initialize_me() function and a likelihood evaluation function.
 Calculates likelihood of initialized population parameters from a norm.
 Also able to initial parametric EOS model, default type spectral.
 
---!!N.B. POPULATION/EOS FILE EXPECTED TO CONTAIN THESE COLUMNS!!--
+--!! N.B. POPULATION/EOS FILE EXPECTED TO CONTAIN THESE COLUMNS !!--
     # lnL sigma_lnL {EOS columns} m1 m2 sig
-"sig" is an uncertainty for both m1 and m2 (may allow separate sigs in future)  
+"sig" is an uncertainty for both m1 and m2 (may allow separate sigs in future)
+
+--!! N.B.: NS-BH systems NOT handled by this code; only BNS/BBH systems !!--
 """
 
 #! /usr/bin/env python
@@ -15,6 +17,7 @@ Also able to initial parametric EOS model, default type spectral.
 import numpy as np
 import argparse
 from scipy.stats import multivariate_normal
+import sys
 
 '''
 Imports used later in code:
@@ -195,29 +198,34 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral"):
 
     for i in range(len(eos_names)):
         spec_params[eos_names[i]]=spec_param_array[i]
-    #print(spec_params)
+    print("EOS data:\n",spec_params)
     
     try: #test code
         import RIFT.physics.EOSManager as EOSManager
     except:
         print("ERROR: could not import EOSManager; aborting.") #test code, only on local machine
-        return None
+        #return None
     
     eos_name="default_eos_name"
     eos_base = None
-    if eos_param == 'spectral':
-        #expect cols: gamma1, gamma2, gamma3, gamma4 (or fewer; must be at least 2 cols)
-        eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
-    elif eos_param == 'cs_spectral' and len(spec_param_array) >=4:
-        #expect cols: gamma1, gamma2, gamma3, gamma4
-        eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
-    elif eos_param == 'PP' and len(spec_param_array) >=4:
-        #expect cols: logP1, gamma1, gamma2, gamma3
-        eos_base = EOSManager.EOSPiecewisePolytrope(name=eos_name,params_dict=spec_params)
-    else:
-        raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
-
-    return eos_base    
+    try:
+        if eos_param == 'spectral':
+            #expect cols: gamma1, gamma2, gamma3, gamma4 (or fewer; must be at least 2 cols)
+            eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
+        elif eos_param == 'cs_spectral' and len(spec_param_array) >=4:
+            #expect cols: gamma1, gamma2, gamma3, gamma4
+            eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
+        elif eos_param == 'PP' and len(spec_param_array) >=4:
+            #expect cols: logP1, gamma1, gamma2, gamma3
+            eos_base = EOSManager.EOSPiecewisePolytrope(name=eos_name,params_dict=spec_params)
+        else:
+            raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
+    except Exception as e:
+        print("=====\n ERROR: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
+        sys.exit(0)
+        #print(" WARNING: RETURNED EOS OBJECT WILL BE",type(eos_base),"!\n=====")
+    
+    return eos_base
 
 
 ################## Initialization #####################
@@ -257,11 +265,11 @@ def initialize_me(**kwargs):
         all_params = np.loadtxt(input_file_name)[input_file_index] 
     elif 'input_line' in kwargs:
         all_params = kwargs['input_line']#used by CIP - single line of data from eos file
-        print("Given params:",kwargs)
+        #print("Given params:",kwargs)
     
     #----- Initialize unit conversion function -----
     global cfunc, cv_params
-    rift = True
+    rift = False
     if cfunc == 4: rift = True
     cvtest, cv_params = conversion_check(kwargs['cip_param_names'])
     
@@ -337,7 +345,7 @@ def initialize_me(**kwargs):
         #check population width: if narrow width or far from edges -> nm = 1 (normal)
         global nm
         if len(pop_params) == 3:
-            if pop_params[0] < 3.0: #if m1 is NS, so is m2 b/c m1>m2
+            if len(eos_names) != 0: #if EOS, must be BNS, else BBH; NSBH not handled
                 mbounds = [1,3] #Neutron star mass range
             else:
                 mbounds = [3,30] #Black hole mass range
@@ -363,14 +371,14 @@ def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
         cip_param_names = [str] - given coordinates that CIP is working in, order doesn't matter
     '''
     
+    print("Retrieving EOS Object from external initialization.")
     if eos is not None:
-        print("Retrieving EOS Object.")
         return eos
     else:
         print("Hello! I've been trying to reach you about your car's extended warranty.")
-        print("Did you know that, because you own a 2004 Honda Prius, you are entitled to up to $16,000 of insurance for the next 5 years at your local Kia dealership?")
-        print("All you have to do is fill in your name, address, and registration (andgivemeallofyourmoney), and we can get you set up in just 10 minutes!")
-        print("Oh, yeah, and there's no EOS here; sorry. :)")
+        #print("Did you know that, because you own a 2004 Honda Prius, you are entitled to up to $16,000 of insurance for the next 5 years at your local Kia dealership?")
+        #print("All you have to do is fill in your name, address, and registration (andgivemeallofyourmoney), and we can get you set up in just 10 minutes!")
+        print("Unfortunately, we have no EOS for you today; sorry.")
         return None #CIP will ignore the EOS (hopefully)
 
 

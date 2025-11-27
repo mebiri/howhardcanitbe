@@ -263,6 +263,73 @@ def make_pop_with_eos(npts,mu,sig=0.2,eos_file=None,match_eos=True):
     print("Fake population (" + str(dat_len) + " points) data created.")
 
 
+def make_pop_with_static_eos(npts,mu,sig=0.2,eos_file=None,line=0):
+    eos_dat = None
+    eos_names = []
+    dat_len = npts
+    eos_title = ""
+    if eos_file is not None:
+        eos_dat = np.genfromtxt(eos_file,dtype='float64',names=True)[line]
+        print("size of eos data:",eos_dat.shape)
+        print("eos data:",eos_dat)
+        eos_names = eos_dat.dtype.names
+        eos_title = "_"+eos_file[:len(eos_file)-4]
+        
+    
+    offset = 0
+    print("Original eos file columns:",eos_names)
+    if eos_names[0] == "lnL":
+        eos_names = eos_names[2:]
+        offset = 2
+    num_eos_cols = len(eos_names)
+    print(num_eos_cols,"EOS columns:",eos_names)
+    
+    #Create pairs of random points, centered on mu & truncated to [1,2]   
+    from scipy.stats import norm
+    rv = norm(loc=mu, scale=sig)
+    dat = rv.rvs(size=(2,dat_len))
+    #print("np dat:\n",dat2)
+    dat_alt = dat.T
+    #print("np dat_alt:\n",dat_alt2)
+    m1 = np.maximum(dat_alt[:,0], dat_alt[:,1])
+    m2 = np.minimum(dat_alt[:,0], dat_alt[:,1])
+    #print("m1:\n",m1)
+    #print("m2:\n",m2)
+    #truncate to between 1 and 2:
+    np.ceil(m1,out=m1,where=(m1 < 1.0))
+    np.floor(m1,out=m1,where=(m1 > 2.0))
+    np.ceil(m2,out=m2,where=(m2 < 1.0))
+    np.floor(m2,out=m2,where=(m2 > 2.0))
+    #print("m1:\n",m1)
+    #print("m2:\n",m2) 
+    print("Shape check:",dat.shape, m1.shape)
+    dat_alt[:,0] = m1
+    dat_alt[:,1] = m2
+    
+    #fix uncertainties to constant:
+    ns = np.zeros(dat_len)#or this: np.random.uniform(0.1,0.2,npts)
+    ns.fill(sig)
+    ns_alt = ns.T
+    
+    grid = np.zeros((dat_len,5+num_eos_cols))
+    print("size of grid:",grid.shape)
+    
+    if eos_dat is not None:
+        for i in range(num_eos_cols):
+            grid[:,2+i].fill(eos_dat[offset+i])
+    grid[:,num_eos_cols+2] = dat_alt[:,0]
+    grid[:,num_eos_cols+3] = dat_alt[:,1]
+    grid[:,num_eos_cols+4] = ns_alt[:]
+    
+    #print(grid)
+    
+    filename = 'static_pop_eos'+eos_title+".txt"
+    headers = "lnL sigma_lnL "+" ".join(i for i in eos_names)+" m1 m2 sig"
+    np.savetxt(filename,grid,header=headers,fmt='%.18e')
+    
+    print("Fake population (" + str(dat_len) + " points) data created.")
+
+
 def get_Lambda():
     #Get text for describing everything:
     rv = np.genfromtxt('test_params.txt',dtype='str')
@@ -312,7 +379,7 @@ if __name__ == "__main__":
     
     #make_Lambda(20)
     
-    num_pop = 20
+    num_pop = 3000
     init_means = [20,10]
     sc = 0.5
     out_units = ['m1','m2']
@@ -333,8 +400,10 @@ if __name__ == "__main__":
     
     #make_Lambda_with_eos(num_pop, init_means, sc, out_units,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")
     
-    make_pop_with_eos(num_pop,1.4,sig=.1,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")#"Parametrized-EoS_maxmass_EoS_samples.txt")
+    #make_pop_with_eos(num_pop,1.4,sig=.1,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")#"Parametrized-EoS_maxmass_EoS_samples.txt")
     
+    make_pop_with_static_eos(num_pop,1.4,sig=.1,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")
+
     #get_Lambda()
     
 
