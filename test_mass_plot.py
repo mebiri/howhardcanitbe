@@ -11,9 +11,24 @@ from scipy.stats import multivariate_normal
 import matplotlib.pyplot as plt
 
 from scipy.stats import norm
-from scipy.integrate import dblquad #does a double integral
-from scipy.integrate import quad
+from scipy.integrate import quad, dblquad
 
+parser = argparse.ArgumentParser()
+    
+parser.add_argument("--using-eos", type=str, default="test_pop_m1_m2_eos.txt", help="Name of EOS")
+parser.add_argument("--posterior",type=str,default=None)
+parser.add_argument("--mass-grid",type=str,default=None)
+parser.add_argument("--use-eos-file",action='store_true',default=False)
+parser.add_argument("--create",action='store_true',default=False)
+parser.add_argument("--normalize",action='store_true',default=False,help="Compute normalization constant for each likelihood (slow)")
+
+opts = parser.parse_args()
+print(opts)
+
+if (opts.posterior is None) and (opts.mass_grid is None):
+    opts.use_eos_file = False
+    opts.create = True
+    print("Will create test field.")
 
 #
 # Mass parameter conversion functions - note they assume m1 >= m2
@@ -36,7 +51,6 @@ def m1q(Mc,q):
 
 def m2q(Mc,q):
     return Mc*(q**(-3./5.))*((q+1)**(1./5.))
-
 
 
 #Check location of pop masses to avoid integrating (and importing scipy) if possible (faster)
@@ -163,7 +177,7 @@ def initialize_me(**kwargs):
     
     #----- Initialize normalization constant -----
     #This is extremely slow...
-    if False: #pop_params is not None:
+    if opts.normalize:
         #check population width: if narrow width or far from edges -> nm = 1 (normal)
         global nm
         if len(pop_params) == 3:
@@ -183,11 +197,9 @@ def initialize_me(**kwargs):
 #compute \int dq p(m1(mc,q),m2(mc,q))
 #integrate (sum) p(m1(mc,q), m2(mc,q)) from q=q1 to q=q2, w/ mc=const.
 
-def likelihood_evaluation(*X):
-    #*X contains data list in same order as cip_params given to initialize_me()
-    
-    #Convert to m1,m2 coords from whatever CIP is passing:
-    m1m2 = np.asarray([X[0],X[1]],dtype=np.float64).T
+def likelihood_evaluation(q,mc):
+    m1, m2 = m1m2q(mc,q)
+    m1m2 = np.asarray([m1,m2],dtype=np.float64).T
     
     #Likelihood (w/ normalization constant):
     if nm == 0:
@@ -196,15 +208,9 @@ def likelihood_evaluation(*X):
         return rv.logpdf(m1m2) - np.log(nm)
 
 
-def do_rv(q,mc):
-    m1, m2 = m1m2q(mc,q)
-    return likelihood_evaluation([m1], [m2])
-
-
 def integrate(mc,q_min,q_max):
-    int_rv = lambda q: do_rv(q,mc) 
-    likelihood = quad(int_rv, q_min, q_max)
-    return likelihood[0]
+    int_rv = lambda q: likelihood_evaluation(q,mc) 
+    return quad(int_rv, q_min, q_max)
 
 
 def post_plot(m1,m2,m1_q,m2_q, log_L, dat, plotname):
@@ -215,7 +221,7 @@ def post_plot(m1,m2,m1_q,m2_q, log_L, dat, plotname):
     ax = fig1.add_subplot(111)
     ax.scatter(m1,m2,c=log_L,marker=".")
     if dat is not None:
-        ax.scatter(dat[:,-3],dat[:-2],c=dat[:,0],marker=".")
+        ax.scatter(dat[:,-3],dat[:,-2],c=dat[:,0],marker=".")
     ax.plot(m1_q,m2_q)
     ax.set_xlabel("$\mu_1$", size="11")
     ax.set_ylabel("$\mu_2$", size="11")
@@ -226,25 +232,7 @@ def post_plot(m1,m2,m1_q,m2_q, log_L, dat, plotname):
     #plt.show(block=False)
     
 
-if __name__=="__main__":
-    
-    #-----Adapted from util_ConstructIntrinsicPosterior_GenericCoordinates.py-----
-    parser = argparse.ArgumentParser()
-    
-    parser.add_argument("--using-eos", type=str, default="test_pop_m1_m2_eos.txt", help="Name of EOS")
-    parser.add_argument("--posterior",type=str,default=None)
-    parser.add_argument("--mass-grid",type=str,default=None)
-    parser.add_argument("--use-eos-file",action='store_true',default=False)
-    parser.add_argument("--create",action='store_true',default=False)
-
-    opts = parser.parse_args()
-    print(opts)
-    
-    if (opts.posterior is None) and (opts.mass_grid is None):
-        opts.use_eos_file = False
-        opts.create = True
-        print("Will create test field.")
-        
+if __name__=="__main__":        
     #coordinates for CIP to use:
     coord_names = ['m1','m2']
         
@@ -297,13 +285,15 @@ if __name__=="__main__":
         m2_indx = param_names.index("m2")
         
         likelist = []
+        like_err_list = []
         for l in range(len(dat_as_array)):
             args_init = {'input_line' : dat_as_array[l], 'param_names':param_names, 'cip_param_names':coord_names}
     
             initialize_me(**args_init) 
         
             res = integrate(1.188,1.0,2.0)
-            likelist.append(res+100)
+            likelist.append(res[0]+100)
+            like_err_list.append(res[1])
         
         mindx = likelist.index(min(likelist))
         print("minimum likelihood:",min(likelist),"at index ",mindx)
@@ -315,6 +305,7 @@ if __name__=="__main__":
             new_params = ["lnL","sigma_lnL","m1","m2","sig"]
             new_grid = np.zeros((len(dat_as_array),len(new_params)))
             new_grid[:,0] = likelist
+            new_grid[:,1] = like_err_list
             new_grid[:,2] = dat_as_array[:,m1_indx]
             new_grid[:,3] = dat_as_array[:,m2_indx]
             new_grid[:,4] = dat_as_array[:,-1]
