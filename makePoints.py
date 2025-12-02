@@ -6,10 +6,18 @@ Hyperpipe modified. Part 1: point generator!
 """
 
 import numpy as np
-#import argparse
+import argparse
 import matplotlib.pyplot as plt
 
+parser = argparse.ArgumentParser()
+#parser.add_argument('--mode',type=int,default=0,help="REQUIRED. 0 is defaults; 1 is custom.")
+parser.add_argument('--npts',type=int,default=3000,help="Number of test points to produce.")
+parser.add_argument('--static-eos-line',type=int,default=0,help="Line of EOS file to use for static model.")
+parser.add_argument('--mass-mean',type=float,default=1.4,help="mean to draw pop masses from.")
+parser.add_argument('--mass-sig',type=float,default=0.1,help="width of pop for drawing masses")
+parser.add_argument('--eos-file',type=str,default="Parametrized-EoS_maxmass_EoS_samples.txt")
 
+opts = parser.parse_args()
 # =============================================================================
 # parser = argparse.ArgumentParser()
 # parser.add_argument('--numpts',type=int, help="Number of test points to produce.")
@@ -263,7 +271,7 @@ def make_pop_with_eos(npts,mu,sig=0.2,eos_file=None,match_eos=True):
     print("Fake population (" + str(dat_len) + " points) data created.")
 
 
-def make_pop_with_static_eos(npts,mu,sig=0.2,eos_file=None,line=0):
+def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0):
     eos_dat = None
     eos_names = []
     dat_len = npts
@@ -379,18 +387,20 @@ if __name__ == "__main__":
     
     #make_Lambda(20)
     
-    num_pop = 3000
+    #if opts.mode == 0:
+    #    num_pop = 3000
     init_means = [20,10]
     sc = 0.5
     out_units = ['m1','m2']
+        #ln = 0
+        #eos = "Parametrized-EoS_maxmass_EoS_samples.txt"
+    #else:
+    #    num_pop = opts.npts
+    #    mu = opts.mass_mean
+    #    sigma = opts.mass_sig
+    #    ln = opts.static_eos_line
+    #    eos = opts.eos_file
     
-# =============================================================================
-#     grid = np.zeros((num_pop,len(init_means)+3))
-#     ns = abs(np.random.normal(loc=sc, scale=2*sc, size=num_pop))
-#     nsT = ns.T
-#     grid[:,4] = nsT
-#     print("size of ns:",grid)
-# =============================================================================
     
     #make_better_Lambda(num_pop,init_means[0],init_means[1],sc)
     
@@ -402,7 +412,7 @@ if __name__ == "__main__":
     
     #make_pop_with_eos(num_pop,1.4,sig=.1,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")#"Parametrized-EoS_maxmass_EoS_samples.txt")
     
-    make_pop_with_static_eos(num_pop,1.4,sig=.1,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")
+    make_pop_with_static_eos(opts.npts,opts.mass_mean,sig=opts.mass_sig,line=opts.static_eos_line,eos_file=opts.eos_file)
 
     #get_Lambda()
     
