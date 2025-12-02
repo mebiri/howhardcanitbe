@@ -331,7 +331,7 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0):
     
     #print(grid)
     
-    filename = 'static_pop_eos'+eos_title+".txt"
+    filename = 'static_pop_eos'+eos_title+"_"+str(line)+".txt"
     headers = "lnL sigma_lnL "+" ".join(i for i in eos_names)+" m1 m2 sig"
     np.savetxt(filename,grid,header=headers,fmt='%.18e')
     
