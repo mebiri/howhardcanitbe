@@ -271,7 +271,7 @@ def make_pop_with_eos(npts,mu,sig=0.2,eos_file=None,match_eos=True):
     print("Fake population (" + str(dat_len) + " points) data created.")
 
 
-def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0):
+def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     eos_dat = None
     eos_names = []
     dat_len = npts
@@ -281,7 +281,7 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0):
         print("size of eos data:",eos_dat.shape)
         print("eos data:",eos_dat)
         eos_names = eos_dat.dtype.names
-        eos_title = "_"+eos_file[:len(eos_file)-4]
+        eos_title = "_"+eos_file[:len(eos_file)-4].split("_")[0]+"_"#.split("-")[0]
         
     
     offset = 0
@@ -294,13 +294,52 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0):
     
     #Create pairs of random points, centered on mu & truncated to [1,2]   
     from scipy.stats import norm
-    rv = norm(loc=mu, scale=sig)
-    dat = rv.rvs(size=(2,dat_len))
+    
+    single_pop = True
+    single_sig = True
+    try:
+        mu2 = mu[1]
+        single_pop = False
+    except:
+        print("Single pop mean detected.")
+    try:
+        sig2 = sig[1]
+        single_sig = False
+    except:
+        print("Single sig detected.")
+    
+    mu1 = mu2 = 1.4
+    if single_pop:
+        mu2 = mu1 = mu
+    else:
+        mu1 = mu[0]
+        mu2 = mu[1]
+    sig1 = sig2 = 0.1
+    if single_sig:
+        sig2 = sig1 = sig
+    else:
+        sig1 = sig[0]
+        sig2 = sig[1]
+    
+    if hold == 1:
+        sig1 = 0.01
+    elif hold == 2:
+        sig2 = 0.01
+    
+    #draw m1:
+    rv1 = norm(loc=mu1, scale=sig1)
+    dat1 = rv1.rvs(size=dat_len)
     #print("np dat:\n",dat2)
-    dat_alt = dat.T
+    dat1_alt = dat1.T
     #print("np dat_alt:\n",dat_alt2)
-    m1 = np.maximum(dat_alt[:,0], dat_alt[:,1])
-    m2 = np.minimum(dat_alt[:,0], dat_alt[:,1])
+    #draw m2:
+    rv2 = norm(loc=mu2, scale=sig2)
+    dat2 = rv2.rvs(size=dat_len)
+    #print("np dat:\n",dat2)
+    dat2_alt = dat2.T
+    
+    m1 = np.maximum(dat1_alt[:], dat2_alt[:])
+    m2 = np.minimum(dat1_alt[:], dat2_alt[:])
     #print("m1:\n",m1)
     #print("m2:\n",m2)
     #truncate to between 1 and 2:
@@ -310,13 +349,20 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0):
     np.floor(m2,out=m2,where=(m2 > 2.0))
     #print("m1:\n",m1)
     #print("m2:\n",m2) 
-    print("Shape check:",dat.shape, m1.shape)
-    dat_alt[:,0] = m1
-    dat_alt[:,1] = m2
+    print("Shape check:",dat1.shape, m1.shape)
+    #dat_alt = np.zeros((2,dat_len)).T
+    #dat_alt[:,0] = m1
+    #dat_alt[:,1] = m2
     
     #fix uncertainties to constant:
     ns = np.zeros(dat_len)#or this: np.random.uniform(0.1,0.2,npts)
-    ns.fill(sig)
+    if hold == 1:
+        ns.fill(sig2)
+    elif hold == 2:
+        ns.fill(sig1)
+    else:
+        sig_avg = np.average([sig1,sig2])
+        ns = abs(np.random.normal(loc=sig_avg, scale=sig_avg/4, size=dat_len)) #must have sig>0
     ns_alt = ns.T
     
     grid = np.zeros((dat_len,5+num_eos_cols))
@@ -325,13 +371,13 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0):
     if eos_dat is not None:
         for i in range(num_eos_cols):
             grid[:,2+i].fill(eos_dat[offset+i])
-    grid[:,num_eos_cols+2] = dat_alt[:,0]
-    grid[:,num_eos_cols+3] = dat_alt[:,1]
+    grid[:,num_eos_cols+2] = m1#dat_alt[:,0]
+    grid[:,num_eos_cols+3] = m2#dat_alt[:,1]
     grid[:,num_eos_cols+4] = ns_alt[:]
     
     #print(grid)
     
-    filename = 'static_pop_eos'+eos_title+"_"+str(line)+".txt"
+    filename = 'static_pop_'+str(mu1)+'_'+str(mu2)+'_h'+str(hold)+eos_title+str(line)+'.txt'
     headers = "lnL sigma_lnL "+" ".join(i for i in eos_names)+" m1 m2 sig"
     np.savetxt(filename,grid,header=headers,fmt='%.18e')
     
@@ -412,7 +458,15 @@ if __name__ == "__main__":
     
     #make_pop_with_eos(num_pop,1.4,sig=.1,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")#"Parametrized-EoS_maxmass_EoS_samples.txt")
     
-    make_pop_with_static_eos(opts.npts,opts.mass_mean,sig=opts.mass_sig,line=opts.static_eos_line,eos_file=opts.eos_file)
+    #eos_file = "Parametrized-EoS_maxmass_EoS_samples.txt"
+    #eos_title = "_"+eos_file[:len(eos_file)-4].split("_")[0].split("-")[0]
+    #print(eos_title)
+    
+    opts.mass_mean = [1.4,1.1]
+    opts.mass_sig = [0.1,0.001]
+    
+    make_pop_with_static_eos(opts.npts,opts.mass_mean,sig=opts.mass_sig,line=opts.static_eos_line,eos_file=opts.eos_file,hold=2)
+
 
     #get_Lambda()
     
