@@ -9,6 +9,7 @@ import numpy as np
 import argparse
 from scipy.stats import multivariate_normal
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 from scipy.stats import norm
 from scipy.integrate import quad, dblquad
@@ -17,10 +18,12 @@ parser = argparse.ArgumentParser()
     
 parser.add_argument("--using-eos", type=str, default="test_pop_m1_m2_eos.txt", help="Name of EOS")
 parser.add_argument("--posterior",type=str,default=None)
-parser.add_argument("--mass-grid",type=str,default=None)
+parser.add_argument("--mass-grid",type=str,default="static_pop_h2_eos_Parametrized-EoS_maxmass_EoS_samples_0.txt")
 parser.add_argument("--use-eos-file",action='store_true',default=False)
 parser.add_argument("--create",action='store_true',default=False)
 parser.add_argument("--normalize",action='store_true',default=False,help="Compute normalization constant for each likelihood (slow)")
+parser.add_argument("--q-bounds",type=str,default="[1.0, 2.0]")
+parser.add_argument("--m-bounds",type=str,default="[1.0, 2.0]")
 
 opts = parser.parse_args()
 print(opts)
@@ -28,7 +31,7 @@ print(opts)
 if (opts.posterior is None) and (opts.mass_grid is None):
     opts.use_eos_file = False
     opts.create = True
-    print("Will create test field.")
+    print("Will create test field with bounds"+opts.m_bounds+".")
 
 #
 # Mass parameter conversion functions - note they assume m1 >= m2
@@ -213,19 +216,20 @@ def integrate(mc,q_min,q_max):
     return quad(int_rv, q_min, q_max)
 
 
-def post_plot(m1,m2,m1_q,m2_q, log_L, dat, plotname):
+def post_plot(m1,m2,m1_q,m2_q, log_L, dat, plotname, legends=["test mass","posterior","[1.0,2.0]"]):
     print("Plotting.")
     
     #Scatterplot:
     fig1 = plt.figure(figsize=(8,5),dpi=250) 
     ax = fig1.add_subplot(111)
-    ax.scatter(m1,m2,c=log_L,marker=".")
+    ax.scatter(m1,m2,c=log_L,marker=".",cmap=mpl.cm.cool,label=legends[0])
     if dat is not None:
-        ax.scatter(dat[:,-3],dat[:,-2],c=dat[:,0],marker=".")
-    ax.plot(m1_q,m2_q)
+        ax.scatter(dat[:,-3],dat[:,-2],c=dat[:,0],marker=".",label=legends[1])
+    ax.plot(m1_q,m2_q,label="q = "+legends[2])
     ax.set_xlabel("$\mu_1$", size="11")
     ax.set_ylabel("$\mu_2$", size="11")
     ax.tick_params(axis='both', which='major', labelsize=10) 
+    ax.legend(fontsize='9', loc='upper left') 
     fig1.tight_layout()
     plt.savefig(plotname+".png")
     print("Plot saved as "+plotname+".png")
@@ -235,9 +239,25 @@ def post_plot(m1,m2,m1_q,m2_q, log_L, dat, plotname):
 if __name__=="__main__":        
     #coordinates for CIP to use:
     coord_names = ['m1','m2']
+    
+    m_bds = None
+    q_bds = None
+    try:
+        m_bds = np.array(eval(opts.m_bounds))
+        print("given mass bounds:",m_bds,"length=",len(m_bds))
+    except:
+        print("Couldn't extract given mass bounds, using default")
+        m_bds = [1.0,2.0]
+    try:
+        q_bds = np.array(eval(opts.q_bounds))
+        print("given q range:",q_bds)
+    except:
+        print("Couldn't extract given q range, using default")
+        q_bds = [1.0,2.0]
         
     dat_as_array = None
     likelist = None
+    dat_name=""
     m1_indx = 0
     m2_indx = 0
     if opts.mass_grid is not None:
@@ -251,6 +271,7 @@ if __name__=="__main__":
             m1_indx = param_names.index("m1")
             m2_indx = param_names.index("m2")
             likelist = dat_as_array[:,0]
+            dat_name="test mass grid"
         except:
             print("Could not open provided file; will create new points.")
     
@@ -264,11 +285,13 @@ if __name__=="__main__":
             for i in range(len(dat_as_array)):
                 if dat_as_array[i,-1] < 0.1:
                     dat_as_array[i,-1] = 0.1
+            dat_name=opts.use_eos_file[:-4]
         else:
             npts = 5000
             param_names = ["lnL","sigma_lnL","m1","m2","sig"]
+            dat_name ="test mass grid"
             dat_as_array = np.zeros((npts,len(param_names)))
-            datm = np.random.uniform(1.0,2.0,(npts,2))
+            datm = np.random.uniform(m_bds[0],m_bds[1],(npts,2))
             m1 = np.maximum(datm[:,0], datm[:,1])
             m2 = np.minimum(datm[:,0], datm[:,1])
             ns = np.random.uniform(0.1,0.2,npts)
@@ -291,7 +314,7 @@ if __name__=="__main__":
     
             initialize_me(**args_init) 
         
-            res = integrate(1.188,1.0,2.0)
+            res = integrate(1.188,q_bds[0],q_bds[1])
             likelist.append(res[0]+100)
             like_err_list.append(res[1])
         
@@ -317,7 +340,7 @@ if __name__=="__main__":
             print("Grid saved as "+filename)
             
     
-    q_range = np.linspace(1.0, 2.0, 100)
+    q_range = np.linspace(q_bds[0], q_bds[1], 100)
     m1_q = m1q(1.188, q_range)
     m2_q = m2q(1.188, q_range)    
     
@@ -326,11 +349,12 @@ if __name__=="__main__":
         post_dat = np.genfromtxt(opts.posterior,names=True)
         param_names = post_dat.dtype.names #separate out the names from the data
         pdat_as_array = post_dat.view((float, len(param_names)))
+        post_name = opts.posterior[:-4]
         
-        post_plot(dat_as_array[:,m1_indx], dat_as_array[:,m2_indx], m1_q,m2_q,likelist,pdat_as_array,"mass_field_with_posterior")
+        post_plot(dat_as_array[:,m1_indx], dat_as_array[:,m2_indx], m1_q,m2_q,likelist,pdat_as_array,"mass_field_with_posterior",legends=[dat_name,post_name,opts.q_bounds])
 
     else:
-        post_plot(dat_as_array[:,m1_indx], dat_as_array[:,m2_indx], m1_q,m2_q,likelist,None,"mass_field_test")
+        post_plot(dat_as_array[:,m1_indx], dat_as_array[:,m2_indx], m1_q,m2_q,likelist,None,"mass_field_test",legends=[dat_name,"",opts.q_bounds])
     
     
     
