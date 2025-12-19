@@ -314,6 +314,8 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     else:
         mu1 = mu[0]
         mu2 = mu[1]
+    name_info = str(int(mu1*10))+"_"+str(int(mu2*10))+"_h"+str(hold)
+    
     sig1 = sig2 = 0.1
     if single_sig:
         sig2 = sig1 = sig
@@ -322,10 +324,14 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
         sig2 = sig[1]
     
     if hold == 1:
-        sig1 = 0.01
+        sig1 = 0.001
     elif hold == 2:
-        sig2 = 0.01
+        sig2 = 0.001
     
+    #mu1 = 1.4
+    #sig1 = .1
+    #mu2 = 1.1
+    #sig2 = 0.0001
     #draw m1:
     rv1 = norm(loc=mu1, scale=sig1)
     dat1 = rv1.rvs(size=dat_len)
@@ -338,18 +344,37 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     #print("np dat:\n",dat2)
     dat2_alt = dat2.T
     
+    #if hold > 0:
+    #    np.ceil(m1,out=m1,where=(m1 < 1.0))
+    #    np.floor(m1,out=m1,where=(m1 > 2.0))
+    
     m1 = np.maximum(dat1_alt[:], dat2_alt[:])
     m2 = np.minimum(dat1_alt[:], dat2_alt[:])
-    #print("m1:\n",m1)
-    #print("m2:\n",m2)
+    
+    print("min m1:\n",min(m1))
+    print("min m2:\n",min(m2))
     #truncate to between 1 and 2:
-    np.ceil(m1,out=m1,where=(m1 < 1.0))
     np.floor(m1,out=m1,where=(m1 > 2.0))
-    np.ceil(m2,out=m2,where=(m2 < 1.0))
-    np.floor(m2,out=m2,where=(m2 > 2.0))
+    if hold == 1:
+        print("Holding 1 not implemented yet. Exiting.")
+        return #temp
+    elif hold == 2:
+        m2cut = 0.01
+        m2 = np.where(m2 < mu2-m2cut, mu2-m2cut, m2) #raise m2 vals to m2 min cutoff
+        m2 = np.where(m2 > mu2+m2cut, mu2+m2cut, m2) #lower m2 vals to m2 max cutoff
+        #m1 = np.where(m1 < mu2-(.9*m2cut), m1+0.01, m1) #raise m1 vals above m2 min cutoff
+        m1 = np.where(m1 < m2, m2+0.01, m1) #raise m1 vals above m2 min cutoff
+    else:
+        np.ceil(m1,out=m1,where=(m1 < 1.0))
+        np.ceil(m2,out=m2,where=(m2 < 1.0))
+        np.floor(m2,out=m2,where=(m2 > 2.0))
+    
+    print("min m1:\n",min(m1))
+    print("min m2:\n",min(m2))
+    
     #print("m1:\n",m1)
     #print("m2:\n",m2) 
-    print("Shape check:",dat1.shape, m1.shape)
+    print("Shape check:",dat1.shape, m1.shape,dat2.shape, m2.shape)
     #dat_alt = np.zeros((2,dat_len)).T
     #dat_alt[:,0] = m1
     #dat_alt[:,1] = m2
@@ -377,9 +402,19 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     
     #print(grid)
     
-    filename = 'static_pop_'+str(mu1)+'_'+str(mu2)+'_h'+str(hold)+eos_title+str(line)+'.txt'
+    filename = 'static_pop_'+name_info+eos_title+str(line)+'.txt'
     headers = "lnL sigma_lnL "+" ".join(i for i in eos_names)+" m1 m2 sig"
     np.savetxt(filename,grid,header=headers,fmt='%.18e')
+    
+    #TEMP########
+    fig1 = plt.figure(figsize=(8,5),dpi=250) 
+    ax = fig1.add_subplot(111)
+    ax.scatter(m1,m2,marker=".")
+    ax.set_xlabel("$m_1$", size="11")
+    ax.set_ylabel("$m_2$", size="11")
+    ax.tick_params(axis='both', which='major', labelsize=10) 
+    fig1.tight_layout()
+    plt.show()
     
     print("Fake population (" + str(dat_len) + " points) data created.")
 
@@ -429,7 +464,7 @@ def get_Lambda():
 
 if __name__ == "__main__":
     #Fix the random generator's seed to produce consistent results (for testing):
-    np.random.seed(42179)
+    np.random.seed(75108)#42179)
     
     #make_Lambda(20)
     
