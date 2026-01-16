@@ -407,17 +407,83 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     np.savetxt(filename,grid,header=headers,fmt='%.18e')
     
     #TEMP########
-    fig1 = plt.figure(figsize=(8,5),dpi=250) 
-    ax = fig1.add_subplot(111)
-    ax.scatter(m1,m2,marker=".")
-    ax.set_xlabel("$m_1$", size="11")
-    ax.set_ylabel("$m_2$", size="11")
-    ax.tick_params(axis='both', which='major', labelsize=10) 
-    fig1.tight_layout()
-    plt.show()
+    #fig1 = plt.figure(figsize=(8,5),dpi=250) 
+    #ax = fig1.add_subplot(111)
+    #ax.scatter(m1,m2,marker=".")
+    #ax.set_xlabel("$m_1$", size="11")
+    #ax.set_ylabel("$m_2$", size="11")
+    #ax.tick_params(axis='both', which='major', labelsize=10) 
+    #fig1.tight_layout()
+    #plt.show()
     
     print("Fake population (" + str(dat_len) + " points) data created.")
 
+
+def generate_mass_Lambda_grid(mu, sig, npts, filepath, eos_index):
+    #Create pairs of random points, centered on mu & with variance sig^2 
+    from scipy.stats import norm
+    rv = norm(loc=mu, scale=sig)
+    dat = rv.rvs(size=(2,npts))
+    #print("np dat:\n",dat2)
+    dat_alt = dat.T
+    #print("np dat_alt:\n",dat_alt2)
+    m1 = np.maximum(dat_alt[:,0], dat_alt[:,1])
+    m2 = np.minimum(dat_alt[:,0], dat_alt[:,1])
+    #print("m1:\n",m1)
+    #print("m2:\n",m2)
+    #truncate to between 1 and 2:
+    #np.ceil(m1,out=m1,where=(m1 < 1.0))
+    #np.floor(m1,out=m1,where=(m1 > 2.0))
+    #np.ceil(m2,out=m2,where=(m2 < 1.0))
+    #np.floor(m2,out=m2,where=(m2 > 2.0))
+    #print("m1:\n",m1)
+    #print("m2:\n",m2) 
+    print("Shape check:",dat.shape, m1.shape)
+    dat_alt[:,0] = m1
+    dat_alt[:,1] = m2
+    
+    #This gets one line of data; it will also get the names for each column, after header:
+    eos_dat = np.genfromtxt(filepath,names=True)[eos_index]   
+    param_names = eos_dat.dtype.names #separate out the names from the data
+    dat_as_array = eos_dat.view((float, len(param_names)))
+    print(dat_as_array)
+    
+    print("Original field names:", param_names)
+    
+    #Create EOS object:
+    try:
+        import ext_prior1
+        my_eos = ext_prior1.generate_eos(dat_as_array, param_names) 
+    
+        #Use EOS object to compute lambda values for each m:
+        l1 = [my_eos.lambda_from_m(my_eos, m) for m in m1]
+        l2 = [my_eos.lambda_from_m(my_eos, n) for n in m2]
+    except:
+        print("Error: could not create EOS object.")
+        l1 = np.zeros(npts)
+        l2 = np.zeros(npts)
+    
+    grid = np.zeros((npts,4+len(param_names)))
+    print("size of grid:",grid.shape)
+    
+    if eos_dat is not None:
+        for i in range(len(param_names)):
+            grid[:,4+i].fill(eos_dat[i])
+    grid[:,0] = m1#dat_alt[:,0]
+    grid[:,1] = m2#dat_alt[:,1]
+    grid[:,2] = l1
+    grid[:,3] = l2
+    
+    #print(grid)
+    eos_title = "_"+filepath.split("_")[0]+"_"#.split("-")[0]
+
+    filename = 'mass_lambda_grid'+eos_title+str(eos_index)+'.txt'
+    headers = "m1 m2 Lambda1 Lambda2 "+" ".join(i for i in param_names)
+    np.savetxt(filename,grid,header=headers,fmt='%.18e')
+    
+  
+    
+    
 
 def get_Lambda():
     #Get text for describing everything:
@@ -500,8 +566,9 @@ if __name__ == "__main__":
     opts.mass_mean = [1.4,1.1]
     opts.mass_sig = [0.1,0.001]
     
-    make_pop_with_static_eos(opts.npts,opts.mass_mean,sig=opts.mass_sig,line=opts.static_eos_line,eos_file=opts.eos_file,hold=2)
+    #make_pop_with_static_eos(opts.npts,opts.mass_mean,sig=opts.mass_sig,line=opts.static_eos_line,eos_file=opts.eos_file,hold=2)
 
+    generate_mass_Lambda_grid(1.39, 0.14, 100, "Parametrized-EoS_maxmass_EoS_samples.txt", 0)
 
     #get_Lambda()
     
