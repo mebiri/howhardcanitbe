@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Hyperpipe modified. Part 1: point generator!
+Contains various functions for creating grids of points
 
 @author: marce
 """
 
 import numpy as np
 import argparse
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--mode',type=int,default="inj",help="Which function to run: mixed_pop, mixed_pop_eos, pop_eos, static, mass_Lambda, inj")
+parser.add_argument('--mode',type=str,default="inj",help="Which function to run: mixed_pop, mixed_pop_eos, pop_eos, static, mass_Lambda, inj")
 parser.add_argument('--npts',type=int,default=3000,help="Number of test points to produce.")
 parser.add_argument('--eos-index',type=int,default=0,help="Line of EOS file to use for static model.")
 parser.add_argument('--mass-mean',type=float,default=1.4,help="mean to draw pop masses from.")
@@ -18,10 +18,14 @@ parser.add_argument('--mass-sig',type=float,default=0.1,help="width of pop for d
 parser.add_argument('--eos-file',type=str,default="Parametrized-EoS_maxmass_EoS_samples.txt")
 parser.add_argument('--units',type=str,default="[m1, m2",help="units of grid masses: m1,m2 or mc,eta")
 parser.add_argument('--inj-masses',type=str,default=None,help="filepath to masses for building PE injection file.")
+parser.add_argument('--inj-z',type=float,default=0.0099,help="redshift for fake PE injections file")
+parser.add_argument('--inj-ra',type=str,default="13:09:48",help="RA (str HH:MM:SS) for fake PE injections file")
+parser.add_argument('--inj-dec',type=str,default="-23:22:53",help="Dec (str DD:MM:SS) for fake PE injections file")
+parser.add_argument('--inj-det-time',type=float,default=1000.0,help="detection time (in seconds?) for fake PE injections file")
 
 opts = parser.parse_args()
 
-
+#conversion methods for specific units
 def mchirp(m1, m2):
     """Compute chirp mass from component masses"""
     return (m1*m2)**(3./5.)*(m1+m2)**(-1./5.)
@@ -29,43 +33,10 @@ def mchirp(m1, m2):
 def symRatio(m1, m2):#this is eta
     """Compute symmetric mass ratio from component masses"""
     return m1*m2/(m1+m2)/(m1+m2)
-
-
-def make_Lambda(npts,mu=0,sig=1):
-    #Create npts pairs of random points in a grid space
-    with open('test_params.txt', 'w') as f:
-        f.write("# lnL sigma_lnL x y z")#Update to correct RIFT format
-        for n in range(npts):
-            #next_pair = np.asarray(np.random.normal(loc=1.5, scale=0.5, size=2),dtype=np.float64)
-            next_pair = np.random.normal(loc=mu, scale=sig, size=3)#want 3D Gaussian
-            #popdata.append([next_pair[0],next_pair[1]])
-            f.write("\n0 0 "+str(next_pair[0])+" "+str(next_pair[1])+" "+str(abs(next_pair[2])))
-
-    print("Fake population (" + str(npts) + " points) data created.")
-
-
-def make_better_Lambda(npts,mu1,mu2,sig):
-    #Create npts pairs of random points in a grid space
-    with open('test_params.txt', 'w') as f:
-        f.write("# lnL sigma_lnL m1 m2 sig")#Update to correct RIFT format
-        for n in range(npts):
-            #next_pair = np.asarray(np.random.normal(loc=1.5, scale=0.5, size=2),dtype=np.float64)
-            n1 = np.random.normal(loc=mu1, scale=sig, size=1)#want 3D Gaussian
-            n2 = np.random.normal(loc=mu2, scale=sig, size=1)
-            ns = abs(np.random.normal(loc=sig, scale=1, size=1))#must have sig > 0
-            
-            if n2 > n1: #ensure m1 > m2
-                n3 = n1
-                n1 = n2
-                n2 = n3
-            
-            #popdata.append([next_pair[0],next_pair[1]])
-            f.write("\n0 0 "+str(n1[0])+" "+str(n2[0])+" "+str(ns[0]))
-
-    print("Fake population (" + str(npts) + " points) data created.")
     
 
-def make_different_Lambda(npts,means,sig,units):
+#makes unit1 unit2 sig grid
+def make_mass_grid(npts,means,sig,units):
     #Create npts pairs of random points in a grid space    
     from scipy.stats import multivariate_normal
     rv = multivariate_normal(mean=means, cov=0.01*np.diag(np.ones(len(means))))
@@ -114,9 +85,8 @@ def make_different_Lambda(npts,means,sig,units):
     print("Fake population (" + str(npts) + " points) data created.")
 
 
-def make_Lambda_with_eos(npts,means,sig,units,eos_cols=None,eos_file=None,match_eos=True):
-    
-    
+#makes eos + unit1 unit2 sig grid
+def make_mass_grid_with_eos(npts,means,sig,units,eos_cols=None,eos_file=None,match_eos=True):
     eos_dat = None
     eos_names = eos_cols
     dat_len = npts
@@ -187,6 +157,7 @@ def make_Lambda_with_eos(npts,means,sig,units,eos_cols=None,eos_file=None,match_
     print("Fake population (" + str(npts) + " points) data created.")
 
 
+#makes eos + m1 m2 sig grid
 def make_pop_with_eos(npts,mu,sig=0.2,eos_file=None,match_eos=True):
     eos_dat = None
     eos_names = []
@@ -256,6 +227,7 @@ def make_pop_with_eos(npts,mu,sig=0.2,eos_file=None,match_eos=True):
     print("Fake population (" + str(dat_len) + " points) data created.")
 
 
+#makes eos + m1 m2 sig grid (only one eos line used, 0-1 masses held to limited range)
 def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     eos_dat = None
     eos_names = []
@@ -313,10 +285,6 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     elif hold == 2:
         sig2 = 0.001
     
-    #mu1 = 1.4
-    #sig1 = .1
-    #mu2 = 1.1
-    #sig2 = 0.0001
     #draw m1:
     rv1 = norm(loc=mu1, scale=sig1)
     dat1 = rv1.rvs(size=dat_len)
@@ -391,16 +359,6 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     headers = "lnL sigma_lnL "+" ".join(i for i in eos_names)+" m1 m2 sig"
     np.savetxt(filename,grid,header=headers,fmt='%.18e')
     
-    #TEMP########
-    #fig1 = plt.figure(figsize=(8,5),dpi=250) 
-    #ax = fig1.add_subplot(111)
-    #ax.scatter(m1,m2,marker=".")
-    #ax.set_xlabel("$m_1$", size="11")
-    #ax.set_ylabel("$m_2$", size="11")
-    #ax.tick_params(axis='both', which='major', labelsize=10) 
-    #fig1.tight_layout()
-    #plt.show()
-    
     print("Fake population (" + str(dat_len) + " points) data created.")
 
 
@@ -460,62 +418,68 @@ def generate_mass_Lambda_grid(mu, sig, npts, filepath, eos_index):
     filename = 'mass_lambda_grid'+eos_title+str(eos_index)+'.txt'
     headers = "m1 m2 Lambda1 Lambda2 "+" ".join(i for i in param_names)
     np.savetxt(filename,grid,header=headers,fmt='%.18e')
-    
-  
-    
-    
 
-def get_Lambda():
-    #Get text for describing everything:
-    rv = np.genfromtxt('test_params.txt',dtype='str')
-    #print(rv)
-    #print("1st element:",rv[0])
-    
-    #dat = []
-    #for i in range(1,len(rv)):
-        #newtext = rv[i].split(" ")
-        #newdat = np.float64(newtext)#, dtype=np.float64)
-       # newdat = []
-        #for j in range(len(newtext)):
-         #   newdat.append(np.float64(newtext[j]))
-        #dat.append(newdat)
-    
-    print("Sample of txt file:")
-    print(rv[0])
-    print(rv[0][0])
-    #print("Sample math:",2*rv[0][2])
-    
-    from scipy.stats import multivariate_normal
-    rv2 = multivariate_normal([5,0,0], [[2,0,0], [0,2,0], [0,0,2]])
-    
-    dat= {}
-    for i in range(len(rv)):
-        dat[i] = rv2.pdf([rv[i,2:]])
-        rv[i,0] = np.log(dat[i])
-        rv[i,1] = 0.001
-    
-    #print("Final data:\n",rv)
-    print("Length of dat:",len(dat))
-    #print("Value of dat:\n",dat)
-    #print("1st value of dat:",dat[0])
-    dat2 = [dat[i] for i in range(len(dat))]
-    #print("dat post-conversion:",dat2)
-    #x = np.linspace(0,5,20)
-    fig1 = plt.figure()
-    ax = fig1.add_subplot(111)
-    ax.scatter(rv[:,2],rv[:,3],c=dat2)
-    #ax.plot(rv[:,2], dat2)
-    plt.show()
 
+def make_fake_injection_file(inj_file, redshift, det_time, ra, dec):
+    #extract masses from given file:    
+    inj_dat = np.genfromtxt(inj_file,names=True)
+    param_names = list(inj_dat.dtype.names) #separate out the names from the data
+    dat_as_array = inj_dat.view((float, len(param_names)))
+    print(dat_as_array[0])
+    npts = len(dat_as_array)
+    
+    #convert RA, dec to radians:
+    rad = np.array(ra.split(":"),dtype=float)
+    rar = (rad[0] + rad[1]/60.0 + rad[2]/3600.0)*15*(np.pi/180.0)
+    
+    decd = np.array(dec.split(":"),dtype=float)
+    decr = (abs(decd[0]) + decd[1]/60.0 + decd[2]/3600.0)*np.sign(decd[0])*(np.pi/180.0)
+    print("RA (rad):",rar)
+    print("dec (rad):",decr)
+    
+    grid = np.zeros((npts,27)) #27 total after detector masses and lum dist
+    
+    grid[:,0] = dat_as_array[:,0] #m1
+    grid[:,1] = dat_as_array[:,1] #m2
+    #cols 2-16 all 0
+    grid[:,17].fill(redshift)
+    grid[:,18].fill(rar)
+    grid[:,19].fill(decr)
+    grid[:,20].fill(det_time)
+    grid[:,21] = np.random.uniform(-1,1, size=npts) #cos(\iota) (inclination)
+    grid[:,22] = np.random.uniform(0,np.pi, size=npts) #psi (polarization)
+    grid[:,23] = np.random.uniform(9,2*np.pi, size=npts) #phi_orb
+    
+    #from lum_distance.py:
+    # m_det = m_source * (1 + z)
+    grid[:,24] = dat_as_array[:,0] * (1.0 + redshift)
+    grid[:,25] = dat_as_array[:,1] * (1.0 + redshift) 
+    
+    try: 
+        from astropy.cosmology import Planck15
+        import astropy.units as u
+        # Use Planck15 luminosity distance in Mpc
+        z = grid[:,18].to_numpy()
+        # astropy returns Quantity; convert to plain float in Mpc
+        dl = Planck15.luminosity_distance(z).to(u.Mpc).value
+        grid[:,26] = dl
+    except Exception as e:
+        print("NOTE: unable to compute luminosity distance. Reason:")
+        print("  ",e)
+    
+    filename = 'injections.dat'
+    headers = "mass_1_source mass_2_source a_1 a_2 spin_1x spin_2x spin_1y spin_2y spin_1z spin_2z cos_tilt_1 cos_tilt_2 phi_1 phi_2 phi_12 eccentricity mean_anomaly redshift ra dec detection_time cos_iota psi phi_orb mass_1_detector mass_2_detector luminosity_distance"
+    np.savetxt(filename,grid,header=headers,fmt='%.18e')
+    print("Saved as "+filename)
+    
 
 if __name__ == "__main__":
     #Fix the random generator's seed to produce consistent results (for testing):
     np.random.seed(75108)#42179)
     
-    #make_Lambda(20)
     
     #if opts.mode == 0:
-    #    num_pop = 3000
+    num_pop = opts.npts
     init_means = [20,10]
     sc = 0.5
     out_units = ['m1','m2']
@@ -528,17 +492,6 @@ if __name__ == "__main__":
     #    ln = opts.static_eos_line
     #    eos = opts.eos_file
     
-    
-    #make_better_Lambda(num_pop,init_means[0],init_means[1],sc)
-    
-    #make_different_Lambda(num_pop, init_means, sc, out_units)
-    
-    #make_Lambda_with_eos(num_pop, init_means, sc, out_units,eos_cols=["gamma1","gamma2","gamma3","gamma4"])
-    
-    #make_Lambda_with_eos(num_pop, init_means, sc, out_units,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")
-    
-    #make_pop_with_eos(num_pop,1.4,sig=.1,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")#"Parametrized-EoS_maxmass_EoS_samples.txt")
-    
     #eos_file = "Parametrized-EoS_maxmass_EoS_samples.txt"
     #eos_title = "_"+eos_file[:len(eos_file)-4].split("_")[0].split("-")[0]
     #print(eos_title)
@@ -546,10 +499,24 @@ if __name__ == "__main__":
     opts.mass_mean = [1.4,1.1]
     opts.mass_sig = [0.1,0.001]
     
-    #make_pop_with_static_eos(opts.npts,opts.mass_mean,sig=opts.mass_sig,line=opts.static_eos_line,eos_file=opts.eos_file,hold=2)
+    if opts.mode == "mixed_pop":
+        make_mass_grid(num_pop, init_means, sc, out_units)
+    elif opts.mode == "mixed_pop_eos":
+        #make_mass_grid_with_eos(num_pop, init_means, sc, out_units,eos_cols=["gamma1","gamma2","gamma3","gamma4"])
+        make_mass_grid_with_eos(num_pop, init_means, sc, out_units,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")
+    elif opts.mode == "pop_eos":
+        make_pop_with_eos(num_pop,1.4,sig=.1,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")
+    elif opts.mode == "static":
+        make_pop_with_static_eos(opts.npts,opts.mass_mean,sig=opts.mass_sig,line=opts.static_eos_line,eos_file=opts.eos_file,hold=2)
+    elif opts.mode == "mass_Lambda":
+        generate_mass_Lambda_grid(1.39, 0.14, 100, "Parametrized-EoS_maxmass_EoS_samples.txt", 0)
+    elif opts.mode == "inj":
+        if opts.inj_masses is None:
+            injection_file = "mass_lambda_grid__Parametrized-EoS_0.txt"
+        else:
+            injection_file = opts.inj_masses
+        make_fake_injection_file(injection_file,opts.inj_z,opts.inj_det_time,opts.inj_ra,opts.inj_dec)
+    else:
+        print("ERROR: selected mode not supported!")
 
-    generate_mass_Lambda_grid(1.39, 0.14, 100, "Parametrized-EoS_maxmass_EoS_samples.txt", 0)
-
-    #get_Lambda()
-    
 
