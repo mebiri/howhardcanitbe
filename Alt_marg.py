@@ -82,7 +82,7 @@ def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,eos_len,out_pts=100,match=True):
     dat_out = None
     
     if not match:
-        npts = out_pts      
+        npts = out_pts #FOR TESTING PURPOSES ONLY!   
     dat_out = np.zeros((npts,len(pop_dat[0]))) #effectively forcing a deep copy of pop_dat
     
     for n in np.arange(npts):
@@ -105,10 +105,6 @@ def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,eos_len,out_pts=100,match=True):
     print(dat_out[0])
     
     return dat_out
-    #filename = 'output_pop_dat.txt'
-    #headers = "lnL sigma_lnL m1 m2 sig"
-    #np.savetxt(filename,dat_out,header=headers,fmt='%.18e')
-    #print("Saved as "+filename+".") 
     
 
 def compute_product(m_obs,sig_obs,pop_norm):
@@ -116,14 +112,45 @@ def compute_product(m_obs,sig_obs,pop_norm):
     for i in range(len(m_obs)):
         #distribution around real mass:
         g_k = multivariate_normal(mean=m_obs[i], cov=np.diag([sig_obs[i][0]**2,sig_obs[i][1]**2]))
-                                  #norm(loc=0,scale=sig_obs[i])
+                #norm(loc=0,scale=sig_obs[i])
         
         #integrand is product of gaussians: p(m)*g_k(m)
         int_rv = lambda y, x: pop_norm.pdf([x,y])*g_k.pdf([x,y])
         #prod = lambda x: pop_norm.pdf(x)*g_k.pdf(x-m_obs[i])
         
-        #integrate over triangle: #Integration bounds not right!
-        w_k, err = dblquad(int_rv, m_obs[i][0]-3*sig_obs[i][0], m_obs[i][0]+3*sig_obs[i][0], m_obs[i][1]-3*sig_obs[i][1], m_obs[i][1]+3*sig_obs[i][1])#lambda x: x)
+        #initial integration range (rectangle)
+        lxbd = m_obs[i][0] - 3*sig_obs[i][0] #left x bound
+        rxbd = m_obs[i][0] + 3*sig_obs[i][0] #right x bound
+        lybd = m_obs[i][1] - 3*sig_obs[i][1] #lower y bound
+        tybd = m_obs[i][1] + 3*sig_obs[i][1] #upper y bound
+        
+        #truncate bounds to be within 1 < m1 < 3, 1 < m2 < 3 (rectangle)
+        if lxbd < 1.0: 
+            lxbd = 1.0
+        if rxbd > 3.0:
+            rxbd = 3.0
+        if lybd < 1.0:
+            lybd = 1.0
+        if tybd > 3.0:
+            tybd = 3.0
+        
+        w_k = 0.0
+        if lxbd >= tybd: 
+            #smallest m1 >= largest m2 -> rectangle fully within triangle
+            #integrate over rectangle:
+            w_k, err = dblquad(int_rv, lxbd, rxbd, lybd, tybd)
+        else: 
+            #some amount of rectangle outside m2 < m1 triangle region
+            if rxbd <= tybd: 
+                #largest m1 <= largest m2 -> top edge of rect outside of triangle
+                #integrate over trapezoid:
+                w_k, err = dblquad(int_rv, lxbd, rxbd, lybd, lambda x: x)
+            else: 
+                #largest m1 > largest m2 -> top left corner of rectangle outside of triangle
+                #split region into trapezoid + rectangle at m1 = max(m2):
+                w_k1, err1 = dblquad(int_rv, lxbd, tybd, lybd, lambda x: x)
+                w_k2, err2 = dblquad(int_rv, tybd, rxbd, lybd, tybd)
+                w_k = w_k1 + w_k2
         
         partial_sum += np.log(w_k) #equivalent to opts.internal_use_lnl = True
     
@@ -141,7 +168,7 @@ def save_results(grid, eos_names):
         # Save result -- needed for odds ratios, etc.
         #   Warning: integral_result.dat uses *original* prior, before any reweighting
         #File (1/7): MARG-0-0.dat
-        #np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
+        np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
         
         eos_extra = []
         annotation_header = "lnL sigmaL neff "
@@ -325,8 +352,7 @@ print(len(pop_as_array),len(pop_as_array[0]))
 
 #adapted from ext_prior1.py
 eos_names = []
-pop_params = []
-pop_params_names = [] #yes this is literally just for the one print statement
+pop_params_names = [] 
 pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
 pop_params_indx = 0
 for i in param_names[2:]: #should be anything past lnL, sig_lnL
@@ -342,7 +368,7 @@ if len(pop_params_names) < 3:
     print("ERROR: Population data could not be initialized: 3 or more columns required.")
     sys.exit(0)
 
-dat_out = loop_manager(mass_list,sig_list,pop_as_array,pop_params_indx,len(eos_names),out_pts=10)
+dat_out = loop_manager(mass_list,sig_list,pop_as_array,pop_params_indx,len(eos_names))
 
 #print(dat_out[:,0])
 #print(len(dat_out))
