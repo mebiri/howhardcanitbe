@@ -3,12 +3,13 @@
 hyperpipe alternate marginalizer for NS mass distribution
 
 Compute the term L_k = \prod_k w_k = \sum_k ln(w_k), where w_k is the integral
-   w_k = \int p(m) g((m-n)_obs, sig_obs) dm 
+   w_k = \int p(m) g_k(m) dm 
    over m_obs-3sig_obs < m < m_obs+3sig_obs for k real NS obs, 
-   a gaussian population distribution p(m), and a gaussian g(\mu, sig)
+   a gaussian population distribution p(m | mu, sig), 
+   and a gaussian g_k(m | m_obs,k, sig_obs,k)
 Essentially \int g(mu, sig) is a cumulative PDF over the integration region
 Full region is not necessary as sig is small. 
-cf. Eqn. (2) in Kedia et al. 2025
+cf. Eqn. (2) in Kedia et al. 2025 (?)
    
 """
 
@@ -114,6 +115,9 @@ def compute_product(m_obs,sig_obs,pop_norm):
         g_k = multivariate_normal(mean=m_obs[i], cov=np.diag([sig_obs[i][0]**2,sig_obs[i][1]**2]))
                 #norm(loc=0,scale=sig_obs[i])
         
+        #Technically missing condition to skip integral (m_obs-3sig_obs > mu-3sig)
+        #i.e., measured mass fully within population distr.
+        
         #integrand is product of gaussians: p(m)*g_k(m)
         int_rv = lambda y, x: pop_norm.pdf([x,y])*g_k.pdf([x,y])
         #prod = lambda x: pop_norm.pdf(x)*g_k.pdf(x-m_obs[i])
@@ -139,18 +143,21 @@ def compute_product(m_obs,sig_obs,pop_norm):
             #smallest m1 >= largest m2 -> rectangle fully within triangle
             #integrate over rectangle:
             w_k, err = dblquad(int_rv, lxbd, rxbd, lybd, tybd)
+            #print("Point (",m_obs[i][0],m_obs[i][1],") was a rectangle.")
         else: 
             #some amount of rectangle outside m2 < m1 triangle region
             if rxbd <= tybd: 
                 #largest m1 <= largest m2 -> top edge of rect outside of triangle
                 #integrate over trapezoid:
                 w_k, err = dblquad(int_rv, lxbd, rxbd, lybd, lambda x: x)
+                #print("Point (",m_obs[i][0],m_obs[i][1],") was a trapezoid.")
             else: 
                 #largest m1 > largest m2 -> top left corner of rectangle outside of triangle
                 #split region into trapezoid + rectangle at m1 = max(m2):
                 w_k1, err1 = dblquad(int_rv, lxbd, tybd, lybd, lambda x: x)
                 w_k2, err2 = dblquad(int_rv, tybd, rxbd, lybd, tybd)
                 w_k = w_k1 + w_k2
+                #print("Point (",m_obs[i][0],m_obs[i][1],") was a split rectangle/trapezoid.")
         
         partial_sum += np.log(w_k) #equivalent to opts.internal_use_lnl = True
     
@@ -324,31 +331,28 @@ def save_results(grid, eos_names):
     print("All files saved.")
         
 
-  
+if (not opts.fname) and opts.using_eos is None:
+    print("--Warning: Test Mode: using preset files--")
+    opts.fname="NSmasses.txt" 
+    opts.using_eos="file:test_pop_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
+    opts.using_eos_index = 0
+
 #Access NS pulsar mass data:
-opts.fname="NSmasses.txt" #TEST CODE
 mass_dat = np.genfromtxt(opts.fname,names=True) #will be NSmasses.txt (renamed from all.marg_net to event-0.net)
 param_names = list(mass_dat.dtype.names)
 dat_as_array = mass_dat.view((float, len(param_names)))[:,1:] #skip first col
-print(dat_as_array)
 
 #Split data for no real reason:
 mass_list = dat_as_array[:,:2]#np.concatenate([dat_as_array[:,0], dat_as_array[:,1]])
-#print(mass_list)
 sig_list = dat_as_array[:,2:]#np.concatenate([dat_as_array[:,2], dat_as_array[:,3]])
-#print(sig_list)
 
 #Access pop data via EOS file:
-#TEST CODE---
-opts.using_eos="file:test_pop_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
-opts.using_eos_index = 0
-
 fname = opts.using_eos.replace('file:', '')
 pop_dat = np.genfromtxt(fname,names=True)[opts.using_eos_index:opts.using_eos_index+opts.n_events_to_analyze] #should be 1 line if n_events=1
 param_names = list(pop_dat.dtype.names)
 pop_as_array = pop_dat.view((float, len(param_names)))#[:,2:] #skip first 2 cols
 print(pop_as_array)
-print(len(pop_as_array),len(pop_as_array[0]))
+print("dat size: (",len(pop_as_array),len(pop_as_array[0]),")")
 
 #adapted from ext_prior1.py
 eos_names = []
@@ -370,10 +374,8 @@ if len(pop_params_names) < 3:
 
 dat_out = loop_manager(mass_list,sig_list,pop_as_array,pop_params_indx,len(eos_names))
 
-#print(dat_out[:,0])
-#print(len(dat_out))
 save_results(dat_out,eos_names)
-#print("Result:",res)
+
 
 # =============================================================================
 # x = np.linspace(1, 2,10)
@@ -389,6 +391,7 @@ save_results(dat_out,eos_names)
 # ax.set_xlabel("$\mu_1$", size="11")
 # ax.set_ylabel("$\mu_2$", size="11")
 # ax.tick_params(axis='both', which='major', labelsize=10) 
+# ax.grid(True)
 # fig1.tight_layout()
 # plt.show(block=False)
 # =============================================================================
