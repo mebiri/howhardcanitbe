@@ -77,7 +77,7 @@ parser.add_argument("--supplementary-likelihood-factor-function", default=None,t
 opts=  parser.parse_args()
 
 
-def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,eos_len,out_pts=100,match=True):
+def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,eos_len,out_pts=1,match=True):
     npts = len(pop_dat) #should be 1 in hyperpipe
     print("npts:",npts)
     dat_out = None
@@ -90,16 +90,20 @@ def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,eos_len,out_pts=100,match=True):
         line = pop_dat[n,pop_idx:pop_idx+3]
         print("line",n,":",line)
         
-        #check 0 < sig < 0.5 (protection against puffing):
-        if abs(line[2]) >= 0.5:
-            line[2] = 0.49
+        if line[0] < line[1]:
+            print("WARNING: m2 > m1; outside valid mass domain; this line is invalid.")
+            dat_out[n][0] = -np.inf
         else:
-            line[2] = abs(line[2])
-        
-        #2D Gaussian of population 
-        rv = multivariate_normal(mean=line[:2], cov=(line[2]**2)*np.diag(np.ones(2)))
-        
-        dat_out[n][0] = compute_product(m_obs,sig_obs,rv)
+            #check 0 < sig < 0.5 (protection against puffing):
+            if abs(line[2]) >= 0.5:
+                line[2] = 0.49
+            else:
+                line[2] = abs(line[2])
+            
+            #2D Gaussian of population 
+            rv = multivariate_normal(mean=line[:2], cov=(line[2]**2)*np.diag(np.ones(2)))
+            
+            dat_out[n][0] = compute_product(m_obs,sig_obs,rv)
         dat_out[n][1] = 0.001
         dat_out[n][2:2+eos_len] = pop_dat[n,2:2+eos_len]
         dat_out[n][pop_idx:pop_idx+3] = line
