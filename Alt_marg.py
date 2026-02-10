@@ -107,7 +107,7 @@ def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,eos_len,out_pts=1,match=True):
         dat_out[n][1] = 0.001
         dat_out[n][2:2+eos_len] = pop_dat[n,2:2+eos_len]
         dat_out[n][pop_idx:pop_idx+3] = line
-    print(dat_out[0])
+    print("Output test:",dat_out[0])
     
     return dat_out
     
@@ -169,11 +169,15 @@ def compute_product(m_obs,sig_obs,pop_norm):
     return partial_sum
 
 
-def save_results(grid, eos_names):
+def save_results(out_grid, header):
     #NEED TO MATCH ALL CIP OUTPUT FILES FOR HYPERPIPE
-    if len(grid) == 1:
-        res = grid[0][0]
-        var = grid[0][1]**2
+    #Note: CIP filenames not formatted to support multiple lines, at present
+    for line in out_grid:
+        res = line[0]
+        if res == -np.inf:
+            print("Note: lnL = -inf detected; skipping filesaves for this line.")
+            continue
+        var = line[1]**2
         ln_integrand_value = res
         neff = opts.n_eff
         # Save result -- needed for odds ratios, etc.
@@ -182,14 +186,8 @@ def save_results(grid, eos_names):
         np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
         
         eos_extra = []
-        annotation_header = "lnL sigmaL neff "
-        fname = opts.using_eos.replace('file:','')
-        params_here = np.loadtxt(fname)[opts.using_eos_index][2:]
-        linefirst =''
-        with open(fname) as f:
-            linefirst = f.readline()
-        linefirst = linefirst[2:]
-        annotation_header = linefirst # this will/must be lnL sigma_lnL and then parameter names, which we want to preserve
+        params_here = line[2:]#np.loadtxt(fname)[opts.using_eos_index][2:]
+        annotation_header = header # this will/must be lnL sigma_lnL and then parameter names, which we want to preserve
         with open(opts.fname_output_integral+"+annotation.dat", 'w') as file_out:
             file_out.write("# " + annotation_header + "\n")
             file_out.write(" {} {} ".format(ln_integrand_value, np.sqrt(var)/res) + ' '.join(map(str,params_here)))
@@ -198,19 +196,6 @@ def save_results(grid, eos_names):
         print(" Max lnL ", ln_integrand_value) #just to preserve output consistency
     
         n_ESS = -1
-        # Compute n_ESS.  Should be done by integrator!
-    # =============================================================================
-    #     if 'log_joint_s_prior' in  samples:
-    #         weights_scaled = np.exp(dat_logL - lnLmax + samples["log_joint_prior"] - samples["log_joint_s_prior"])
-    #         # dictionary, write this to enable later use of it
-    #         samples["joint_s_prior"] = np.exp(samples["log_joint_s_prior"])
-    #         samples["joint_prior"] = np.exp(samples["log_joint_prior"])
-    #     else:
-    #         weights_scaled = np.exp(dat_logL - lnLmax)*sampler._rvs["joint_prior"]/sampler._rvs["joint_s_prior"]
-    #     weights_scaled = weights_scaled/np.max(weights_scaled)  # try to reduce dynamic range
-    #     n_ESS = np.sum(weights_scaled)**2/np.sum(weights_scaled**2)
-    #     print(" n_eff n_ESS ", neff, n_ESS)
-    # =============================================================================
         np.savetxt(opts.fname_output_integral+"+annotation_ESS.dat",[[ln_integrand_value, np.sqrt(var)/res, neff, n_ESS]],header=" lnL sigmaL neff n_ESS ")
         #File (3/7): MARG-0-0+annotation_ESS.dat
         
@@ -219,7 +204,6 @@ def save_results(grid, eos_names):
         
         log_res_reweighted = lnLmax + np.log(np.mean(weights))
         sigma_reweighted= np.std(weights,dtype=np.float64)/np.mean(weights)
-        #neff_reweighted = np.sum(weights)/np.max(weights)
         np.savetxt(opts.fname_output_integral+"_withpriorchange.dat", [log_res_reweighted])  # should agree with the usual result, if no prior changes. Erm... about that...
         #File (4/7): MARG-0-0_withpriorchange.dat
         with open(opts.fname_output_integral+"_withpriorchange+annotation.dat", 'w') as file_out:
@@ -228,113 +212,98 @@ def save_results(grid, eos_names):
             file_out.write(' '.join( str_out + eos_extra + ["\n"]))
             #File (5/7): MARG-0-0_withpriorchange+annotation.dat
         
-        #n_output_size = np.min([len(P_list),opts.n_output_samples])
         #lalsimutils.ChooseWaveformParams_array_to_xml(P_list[:n_output_size],fname=opts.fname_output_samples,fref=P.fref)
         #File (6/7): MARG-0-0.xml.gz - hopefully not needed...
-        lnL_list = [grid[0][0]]
+        lnL_list = [line[0]] #still just for the 1 line; sampler results in CIP
         lnL_list = np.array(lnL_list,dtype=internal_dtype)#lnL_list created during downselecting in CIP
         np.savetxt(opts.fname_output_samples+"_lnL.dat", lnL_list)
         #File (7/7): MARG-0-0_lnL.dat - usually contains lnL of all samples    
-    else:
-        #Needs work to make the output look good (values trapped in lists, etc.)
-        res = grid[:,0]
-        var = grid[:,1]**2
-        ln_integrand_value = res
-        neff = opts.n_eff
-        # Save result -- needed for odds ratios, etc.
-        #   Warning: integral_result.dat uses *original* prior, before any reweighting
-        #File (1/7): MARG-0-0.dat
-        np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
+    #more original code from CIP:
+# =============================================================================
+#         eos_extra = []
+#         annotation_header = "lnL sigmaL neff "
+#         fname = opts.using_eos.replace('file:','')
+#         params_here = np.loadtxt(fname)[opts.using_eos_index:opts.using_eos_index+opts.n_events_to_analyze][:,2:]
+#         linefirst =''
+#         with open(fname) as f:
+#             linefirst = f.readline()
+#         linefirst = linefirst[2:]
+#         annotation_header = linefirst # this will/must be lnL sigma_lnL and then parameter names, which we want to preserve
+#         with open(opts.fname_output_integral+"+annotation.dat", 'w') as file_out:
+#             file_out.write("# " + annotation_header + "\n")
+#             file_out.write(" {} {} ".format(ln_integrand_value, np.sqrt(var)/res) + ' '.join(map(str,params_here)))
+#             #File (2/7): MARG-0-0+annotation.dat
+#         
+#         #Don't have access to sampled points b/c used scipy
+#         #samples = sampler._rvs
+#         #samples_type_names = list(samples.keys())
+#         #print(samples_type_names)
+#         #n_params = len(opts.parameter) + len(opts.parameter_implied) #coord_names
+#         #dat_mass = np.zeros((len(samples[low_level_coord_names[0]]),n_params+3))
+#         dat_logL = np.zeros(len(grid))#samples[low_level_coord_names[0]]))
+#         if not(opts.internal_use_lnL):
+#             if 'log_integrand' in samples_type_names:
+#                 dat_logL = np.log(samples["log_integrand"])
+#             elif 'integrand' in samples_type_names:
+#                 dat_logL = np.log(samples["integrand"])
+#             else:
+#                 raise Exception("Failure : cannot identify lnL field")
+#         else:
+#             if 'log_integrand' in samples_type_names:
+#                 dat_logL = samples['log_integrand']
+#             else:
+#                 dat_logL = samples["integrand"]
+#         dat_logL = grid[:,0] #not really the same thing but whatever
+#         lnLmax = np.max(dat_logL[np.isfinite(dat_logL)])
+#         print(" Max lnL ", np.max(dat_logL))
+#     
+#         n_ESS = -1
+#         # Compute n_ESS.  Should be done by integrator!
+#         if 'log_joint_s_prior' in  samples:
+#             weights_scaled = np.exp(dat_logL - lnLmax + samples["log_joint_prior"] - samples["log_joint_s_prior"])
+#             # dictionary, write this to enable later use of it
+#             samples["joint_s_prior"] = np.exp(samples["log_joint_s_prior"])
+#             samples["joint_prior"] = np.exp(samples["log_joint_prior"])
+#         else:
+#             weights_scaled = np.exp(dat_logL - lnLmax)*sampler._rvs["joint_prior"]/sampler._rvs["joint_s_prior"]
+#         weights_scaled = weights_scaled/np.max(weights_scaled)  # try to reduce dynamic range
+#         n_ESS = np.sum(weights_scaled)**2/np.sum(weights_scaled**2)
+#         print(" n_eff n_ESS ", neff, n_ESS)
+#         np.savetxt(opts.fname_output_integral+"+annotation_ESS.dat",[[ln_integrand_value, np.sqrt(var)/res, neff, n_ESS]],header=" lnL sigmaL neff n_ESS ")
+#         #File (3/7): MARG-0-0+annotation_ESS.dat
+#         
+#         #p = samples["joint_prior"]
+#         #ps =samples["joint_s_prior"]
+#         lnL = dat_logL
+#         lnLmax = np.max(lnL)
+#         weights = np.exp(lnL-lnLmax)#*p/ps #will probably be e^0 = 1
+#         
+#         log_res_reweighted = lnLmax + np.log(np.mean(weights))
+#         sigma_reweighted= np.std(weights,dtype=np.float64)/np.mean(weights)
+#         #neff_reweighted = np.sum(weights)/np.max(weights)
+#         np.savetxt(opts.fname_output_integral+"_withpriorchange.dat", [log_res_reweighted])  # should agree with the usual result, if no prior changes. Erm... about that...
+#         #File (4/7): MARG-0-0_withpriorchange.dat
+#         with open(opts.fname_output_integral+"_withpriorchange+annotation.dat", 'w') as file_out:
+#             str_out = list(map(str,[log_res_reweighted, sigma_reweighted, neff]))
+#             file_out.write("# " + annotation_header + "\n")
+#             file_out.write(' '.join( str_out + eos_extra + ["\n"]))
+#             #File (5/7): MARG-0-0_withpriorchange+annotation.dat
+#         
+#         #n_output_size = np.min([len(P_list),opts.n_output_samples])
+#         #lalsimutils.ChooseWaveformParams_array_to_xml(P_list[:n_output_size],fname=opts.fname_output_samples,fref=P.fref)
+#         #File (6/7): MARG-0-0.xml.gz - hopefully not needed...
+#         lnL_list = []
+#         for l in range(len(grid)):#so pointless...
+#             lnL_list.append(grid[l][0])
+#         lnL_list = np.array(lnL_list,dtype=internal_dtype)#lnL_list created during downselecting in CIP
+#         np.savetxt(opts.fname_output_samples+"_lnL.dat", lnL_list)
+#         #File (7/7): MARG-0-0_lnL.dat - usually contains lnL of all samples
+# =============================================================================
         
-        eos_extra = []
-        annotation_header = "lnL sigmaL neff "
-        fname = opts.using_eos.replace('file:','')
-        params_here = np.loadtxt(fname)[opts.using_eos_index:opts.using_eos_index+opts.n_events_to_analyze][:,2:]
-        print(params_here)
-        linefirst =''
-        with open(fname) as f:
-            linefirst = f.readline()
-        linefirst = linefirst[2:]
-        annotation_header = linefirst # this will/must be lnL sigma_lnL and then parameter names, which we want to preserve
-        print(' '.join(map(str,params_here)))
-        print(" {} {} ".format(ln_integrand_value, np.sqrt(var)/res) + ' '.join(map(str,params_here)))
-        with open(opts.fname_output_integral+"+annotation.dat", 'w') as file_out:
-            file_out.write("# " + annotation_header + "\n")
-            file_out.write(" {} {} ".format(ln_integrand_value, np.sqrt(var)/res) + ' '.join(map(str,params_here)))
-            #File (2/7): MARG-0-0+annotation.dat
-        
-        #Don't have access to sampled points b/c used scipy
-        #samples = sampler._rvs
-        #samples_type_names = list(samples.keys())
-        #print(samples_type_names)
-        #n_params = len(opts.parameter) + len(opts.parameter_implied) #coord_names
-        #dat_mass = np.zeros((len(samples[low_level_coord_names[0]]),n_params+3))
-        dat_logL = np.zeros(len(grid))#samples[low_level_coord_names[0]]))
-    # =============================================================================
-    #     if not(opts.internal_use_lnL):
-    #         if 'log_integrand' in samples_type_names:
-    #             dat_logL = np.log(samples["log_integrand"])
-    #         elif 'integrand' in samples_type_names:
-    #             dat_logL = np.log(samples["integrand"])
-    #         else:
-    #             raise Exception("Failure : cannot identify lnL field")
-    #     else:
-    #         if 'log_integrand' in samples_type_names:
-    #             dat_logL = samples['log_integrand']
-    #         else:
-    #             dat_logL = samples["integrand"]
-    # =============================================================================
-        dat_logL = grid[:,0] #not really the same thing but whatever
-        lnLmax = np.max(dat_logL[np.isfinite(dat_logL)])
-        print(" Max lnL ", np.max(dat_logL))
-    
-        n_ESS = -1
-        # Compute n_ESS.  Should be done by integrator!
-    # =============================================================================
-    #     if 'log_joint_s_prior' in  samples:
-    #         weights_scaled = np.exp(dat_logL - lnLmax + samples["log_joint_prior"] - samples["log_joint_s_prior"])
-    #         # dictionary, write this to enable later use of it
-    #         samples["joint_s_prior"] = np.exp(samples["log_joint_s_prior"])
-    #         samples["joint_prior"] = np.exp(samples["log_joint_prior"])
-    #     else:
-    #         weights_scaled = np.exp(dat_logL - lnLmax)*sampler._rvs["joint_prior"]/sampler._rvs["joint_s_prior"]
-    #     weights_scaled = weights_scaled/np.max(weights_scaled)  # try to reduce dynamic range
-    #     n_ESS = np.sum(weights_scaled)**2/np.sum(weights_scaled**2)
-    #     print(" n_eff n_ESS ", neff, n_ESS)
-    # =============================================================================
-        np.savetxt(opts.fname_output_integral+"+annotation_ESS.dat",[[ln_integrand_value, np.sqrt(var)/res, neff, n_ESS]],header=" lnL sigmaL neff n_ESS ")
-        #File (3/7): MARG-0-0+annotation_ESS.dat
-        
-        #p = samples["joint_prior"]
-        #ps =samples["joint_s_prior"]
-        lnL = dat_logL
-        lnLmax = np.max(lnL)
-        weights = np.exp(lnL-lnLmax)#*p/ps #will probably be e^0 = 1
-        
-        log_res_reweighted = lnLmax + np.log(np.mean(weights))
-        sigma_reweighted= np.std(weights,dtype=np.float64)/np.mean(weights)
-        #neff_reweighted = np.sum(weights)/np.max(weights)
-        np.savetxt(opts.fname_output_integral+"_withpriorchange.dat", [log_res_reweighted])  # should agree with the usual result, if no prior changes. Erm... about that...
-        #File (4/7): MARG-0-0_withpriorchange.dat
-        with open(opts.fname_output_integral+"_withpriorchange+annotation.dat", 'w') as file_out:
-            str_out = list(map(str,[log_res_reweighted, sigma_reweighted, neff]))
-            file_out.write("# " + annotation_header + "\n")
-            file_out.write(' '.join( str_out + eos_extra + ["\n"]))
-            #File (5/7): MARG-0-0_withpriorchange+annotation.dat
-        
-        #n_output_size = np.min([len(P_list),opts.n_output_samples])
-        #lalsimutils.ChooseWaveformParams_array_to_xml(P_list[:n_output_size],fname=opts.fname_output_samples,fref=P.fref)
-        #File (6/7): MARG-0-0.xml.gz - hopefully not needed...
-        lnL_list = []
-        for l in range(len(grid)):#so pointless...
-            lnL_list.append(grid[l][0])
-        lnL_list = np.array(lnL_list,dtype=internal_dtype)#lnL_list created during downselecting in CIP
-        np.savetxt(opts.fname_output_samples+"_lnL.dat", lnL_list)
-        #File (7/7): MARG-0-0_lnL.dat - usually contains lnL of all samples
-        
-    print("All files saved.")
+        print("All files saved for this line.")
         
 
+#----------------------------------------------------------
 if (not opts.fname) and opts.using_eos is None:
     print("--Warning: Test Mode: using preset files--")
     opts.fname="NSmasses.txt" 
@@ -378,7 +347,9 @@ if len(pop_params_names) < 3:
 
 dat_out = loop_manager(mass_list,sig_list,pop_as_array,pop_params_indx,len(eos_names))
 
-save_results(dat_out,eos_names)
+lineheader = ' '.join(map(str,param_names))+"\n" #to match CIP extracted header
+#print(linenew)
+save_results(dat_out,lineheader)
 
 
 # =============================================================================
