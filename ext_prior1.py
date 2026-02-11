@@ -105,8 +105,9 @@ def boundary_integration_checks(pop,mass_bounds):
     
     #Check that d1, d2, d3 are positive -> negative means outside pop range
     if d1 < 0 or d2 < 0 or d3 < 0 or pop_params[0] < m_min or pop_params[1] > m_max:
-        print("ERROR: 1 or more masses outside valid range ["+str(m_min)+","+str(m_max)+"]; cannot normalize population.")
-        return 0 #set normalization constant to 0, so lnL = -infinity
+        print("=====\n FAILSTATE 4: 1 OR MORE MASSES OUTSIDE VALID RANGE. EXITING.\n=====")
+        sys.exit(0)
+        #return 0 #set normalization constant to 0, so lnL = -infinity
     
     d1c = False
     d2c = False
@@ -221,7 +222,7 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral"):
         else:
             raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
     except Exception as e:
-        print("=====\n ERROR: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
+        print("=====\n FAILSTATE 3: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
         sys.exit(0)
         #print(" WARNING: RETURNED EOS OBJECT WILL BE",type(eos_base),"!\n=====")
     
@@ -274,8 +275,9 @@ def initialize_me(**kwargs):
     cvtest, cv_params = conversion_check(kwargs['cip_param_names'])
     
     if cvtest == 0:
-        print("ERROR: could not find valid mass conversion. Something bad will happen now....")
-        return #this will break CIP, most likely #TODO: improve this reaction, if possible
+        print("  FAILSTATE 1: could not find valid mass coordinate conversion. Exiting.")
+        #return #this will break CIP, most likely
+        sys.exit(0)
     else:
         if (rift) or cvtest != 3: #lalsimultils imported or not needed
             cfunc = cvtest #cvtest can be 1, 2, or 3
@@ -292,42 +294,41 @@ def initialize_me(**kwargs):
     
     #Expected header names: # lnL sigma_lnL g0 g1 g2 g3 m1 m2 sig
     #Split columns into pop and EOS:
-    if cvtest != 0:
-        #assume population is a go
-        pop_params = []
-        pop_params_names = [] #yes this is literally just for the one print statement
-        pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
-        for i in kwargs['param_names'][2:]: #should be anything past lnL, sig_lnL
-            if i in pop_params_lib:
-                pop_params_names.append(i)
-                pop_params.append(all_params[kwargs['param_names'].index(i)])
-            else: #anything that isn't m1, m2, sig
-                eos_names.append(i)
-                eos_dat.append(all_params[kwargs['param_names'].index(i)])
-        
-        print("Population parameters found:",pop_params_names,
-              "\nEOS parameters found:",eos_names)
-        
-        if len(pop_params) < 3:
-            print("ERROR: Population data could not be initialized: 3 or more columns required.")
-            pop_params = None
-            #rv - could maybe treat the 2D case with an assumed sigma if len==2
-            #TODO: could maybe make a default rv (mean=[1,2]?) to avoid crashes?
-            n_dim = 0
-        else:
-            #NOTE: supports 2+1 or 2+2-type mass/sig columns. Not 3+1, etc.
-            n_dim = (len(pop_params)%2)+int(len(pop_params)/2) #expect 1 sigma per mass or pair of masses
-            
-            #check 0 < sig < 1 (protection against puffing):
-            if abs(pop_params[n_dim]) >= 0.5:
-                pop_params[n_dim] = 0.49
-            else:
-                pop_params[n_dim] = abs(pop_params[n_dim])
-            
-            #cf. rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
-            rv = multivariate_normal(mean=pop_params[:n_dim], cov=(pop_params[n_dim]**2)*np.diag(np.ones(n_dim))) #assumes only 2D - not great
+    #if cvtest != 0: #always true
+    #assume population is a go
+    pop_params = []
+    pop_params_names = [] #yes this is literally just for the one print statement
+    pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
+    for i in kwargs['param_names'][2:]: #should be anything past lnL, sig_lnL
+        if i in pop_params_lib:
+            pop_params_names.append(i)
+            pop_params.append(all_params[kwargs['param_names'].index(i)])
+        else: #anything that isn't m1, m2, sig
+            eos_names.append(i)
+            eos_dat.append(all_params[kwargs['param_names'].index(i)])
+    
+    print("Population parameters found:",pop_params_names,
+          "\nEOS parameters found:",eos_names)
+    
+    if len(pop_params) < 3:
+        print("  FAILSTATE 2: could not initialize population data: 3 or more columns required. Exiting.")
+        #pop_params = None
+        #n_dim = 0
+        sys.exit(0)
     else:
-        print("ERROR: Population data could not be initialized: data headers not found.")
+        #NOTE: supports 2+1 or 2+2-type mass/sig columns. Not 3+1, etc.
+        n_dim = (len(pop_params)%2)+int(len(pop_params)/2) #expect 1 sigma per mass or pair of masses
+        
+        #check 0 < sig < 0.5 (protection against puffing):
+        if abs(pop_params[n_dim]) >= 0.5:
+            pop_params[n_dim] = 0.49
+        else:
+            pop_params[n_dim] = abs(pop_params[n_dim])
+        
+        #cf. rv = multivariate_normal(mean=x0, cov = sigma1d*sigma1d*np.diag(np.ones(n_dim)))
+        rv = multivariate_normal(mean=pop_params[:n_dim], cov=(pop_params[n_dim]**2)*np.diag(np.ones(n_dim))) #assumes only 2D - not great
+    #else:
+    #    print("ERROR: Population data could not be initialized: data headers not found.")
     
     print("pop_params:",pop_params)
     print("n_dim=",n_dim)
@@ -337,7 +338,7 @@ def initialize_me(**kwargs):
     if len(eos_names) > 0 and (rift):
         eos = generate_eos(eos_dat, eos_names)
     else:
-        print("ERROR: Unable to create EOS object.")
+        print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
         eos = None
     
     #----- Initialize normalization constant -----
@@ -454,8 +455,6 @@ def lalcutout(x_in,coord_names=['mc', 'eta'],low_level_coord_names=['m1','m2'],e
 
 
 if __name__ == '__main__':    
-    #I'm a pretend CIP! I hold all the strings... mwahahahaha!    
-    
     #-----Adapted from util_ConstructIntrinsicPosterior_GenericCoordinates.py-----
     parser = argparse.ArgumentParser()
     
@@ -476,12 +475,8 @@ if __name__ == '__main__':
     
     #coordinates for CIP to use:
     coord_names = ['m1','m2']#opts.parameter # Used  in fit
-    #if coord_names is None:
-    #    coord_names = []
-    #if opts.parameter_implied:
-    #    coord_names = coord_names+opts.parameter_implied
     
-    has_retrieve_eos = True #not dealing with this yet
+    has_retrieve_eos = True 
     
     supplemental_ln_likelihood= None
     supplemental_ln_likelihood_prep =None
@@ -511,8 +506,7 @@ if __name__ == '__main__':
                 fake_eos = False  # using EOS hyperparameter conversion! 
                 supplemental_eos = retrieve_eos #getattr(external_likelihood_module, 'retrieve_eos')
                 my_eos = supplemental_eos(**args_init) #run retrieve_eos('input_line'=dat_as_array, 'param_names'=param_names)           
-    
-            
+      
     #Fake CIP integral:
     # Result shifted by lnL_shift
     #fn_passed = likelihood_function
@@ -522,7 +516,6 @@ if __name__ == '__main__':
     #    fn_passed = log_likelihood_function   # helps regularize large values
     #    if supplemental_ln_likelihood:
     #        fn_passed =  lambda *x: log_likelihood_function(*x) + supplemental_ln_likelihood(*x)
-        #extra_args.update({"use_lnL":True,"return_lnI":True})
         
         #Create npts pairs of random points in a grid space 
         x0=[1.9,1.1] #N.B. Drawing m1, m2 pairs!
