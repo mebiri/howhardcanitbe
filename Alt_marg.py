@@ -321,7 +321,13 @@ sig_list = dat_as_array[:,2:]#np.concatenate([dat_as_array[:,2], dat_as_array[:,
 
 #Access pop data via EOS file:
 fname = opts.using_eos.replace('file:', '')
-pop_dat = np.genfromtxt(fname,names=True)[opts.using_eos_index:opts.using_eos_index+opts.n_events_to_analyze] #should be 1 line if n_events=1
+pop_dat = None
+try:
+    check_dat = np.genfromtxt(fname,names=True)[opts.using_eos_index] #test for index being out of range
+    pop_dat = np.genfromtxt(fname,names=True)[opts.using_eos_index:opts.using_eos_index+opts.n_events_to_analyze] #should be 1 line if n_events=1
+except Exception as e:
+    print(" Fail: EOS index out of range:\n   ",e)
+    sys.exit(0)
 param_names = list(pop_dat.dtype.names)
 pop_as_array = pop_dat.view((float, len(param_names)))#[:,2:] #skip first 2 cols
 print(pop_as_array)
