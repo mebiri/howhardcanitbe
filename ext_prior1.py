@@ -16,7 +16,7 @@ Also able to initial parametric EOS model, default type spectral.
 #os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np
 import argparse
-from scipy.stats import multivariate_normal
+from scipy.stats import norm, multivariate_normal
 import sys
 
 '''
@@ -131,7 +131,7 @@ def boundary_integration_checks(pop,mass_bounds):
     if checks == 0: 
         nm_val = 1 #nothing near edges, just set normalization to 1
     elif checks == 1:
-        from scipy.stats import norm
+        #from scipy.stats import norm
         if d1c: #test 1
             nm_val = norm.cdf(d1,loc=0,scale=pop_params[2])
         elif d2c: #test 2
@@ -204,7 +204,7 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral"):
     try: #test code
         import RIFT.physics.EOSManager as EOSManager
     except:
-        print("ERROR: could not import EOSManager; aborting.") #test code, only on local machine
+        print("-- ERROR: could not import EOSManager. --") #test code, only on local machine
         #return None
     
     eos_name="default_eos_name"
@@ -223,7 +223,7 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral"):
             raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
     except Exception as e:
         print("=====\n FAILSTATE 3: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
-        sys.exit(0)
+        sys.exit(64) #special exit code for shell_wrapper_cip.sh to detect (hopefully)!
         #print(" WARNING: RETURNED EOS OBJECT WILL BE",type(eos_base),"!\n=====")
     
     return eos_base
@@ -238,6 +238,7 @@ nm = 1
 cfunc = 0
 cv_params = None
 eos = None
+constraint_mmax_factor = 0.0
 
 #Try to import lalsimutils (will fail on local machines)
 try:
@@ -335,8 +336,10 @@ def initialize_me(**kwargs):
     
     #----- Initialize EOS object -----
     global eos
+    global constraint_mmax_factor
     if len(eos_names) > 0 and (rift):
         eos = generate_eos(eos_dat, eos_names)
+        constraint_mmax_factor = mmax_constraint(eos.mMaxMsun) 
     else:
         print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
         eos = None
@@ -385,6 +388,17 @@ def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
 
 ####################### LIKELIHOOD EVAL #######################
 
+def mmax_constraint(mmax_EOS):
+    #Hardcoded to avoid file access (unavailable via CIP, at present)
+    mass_NS = [2.14, 2.01, 1.908] #3 high-mass pulsars (Dietrich et al. 2020)
+    mass_NS_sig = [0.1, 0.04, 0.016]
+    
+    partial_prod = 1.
+    for i in np.arange(len(mass_NS)):
+        partial_prod *= norm.cdf(mmax_EOS,loc=mass_NS[i],scale=mass_NS_sig[i])
+    return partial_prod
+
+
 def likelihood_evaluation(*X):
     #This looks arduous and slow for a function that will be called 1000 times in a for loop...
     #*X contains data list in same order as cip_params given to initialize_me()
@@ -405,7 +419,7 @@ def likelihood_evaluation(*X):
     if nm == 0:
         return -np.inf
     else:
-        return rv.logpdf(m1m2) - np.log(nm)
+        return rv.logpdf(m1m2) - np.log(nm) + np.log(constraint_mmax_factor)
 
 
 #USED FOR TESTING ONLY---
