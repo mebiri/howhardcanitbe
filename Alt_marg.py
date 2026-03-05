@@ -24,7 +24,7 @@ internal_dtype = np.float32
 
 parser = argparse.ArgumentParser()
 #exclusive here
-parser.add_argument("--chunk-save",action='store_true',default=False,help="Save all output lines to one file instead of 1 file per line.")
+parser.add_argument("--chunk-save",action='store_true',help="Save all output lines to one file instead of 1 file per line.")
 parser.add_argument("--save-all-files",action='store_true',help="If present, makes versions of 6 of the 7 files (no .xml) CIP creates (ignored if chunk-save is true)")
 parser.add_argument("--std-scale-factor",type=float,default=0.0001,help="Scale factor to adjust error provided by scipy.dblquad (usually very small)")
 
@@ -184,7 +184,6 @@ def save_results(out_grid, header):
     if opts.chunk_save:
         # remove invalid lines
         indx_ok = np.ones(len(out_grid),dtype=bool)
-        #print("len index_ok:",len(indx_ok))
         indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(out_grid[:,0]))) #check nans (shouldn't happen)
         indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isinf(out_grid[:,0]))) #check +/-inf (can happen)
         print('   Ignoring lines with lnL = -inf : {} '.format(len(out_grid)-np.sum(indx_ok)))
@@ -197,11 +196,8 @@ def save_results(out_grid, header):
         np.savetxt(opts.fname_output_integral+"+annotation.dat",out_grid,header=header[:-1]) #skip newline char in header
         print("Chunk file saved.")
         return
-    
-    save_all = False
-    if opts.save_all_files: 
-        save_all = True
-    #Note: CIP filenames not formatted to support multiple lines, at present
+
+    #NOTE: CIP filenames not formatted to support multiple lines, at present
     for line in out_grid:
         res = line[0]
         if res == -np.inf:
@@ -212,7 +208,7 @@ def save_results(out_grid, header):
         neff = opts.n_eff
         # Save result -- needed for odds ratios, etc.
         #   Warning: integral_result.dat uses *original* prior, before any reweighting
-        if save_all:
+        if opts.save_all_files:
             #File (1/7): MARG-0-0.dat
             np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
         
@@ -226,7 +222,7 @@ def save_results(out_grid, header):
        
         print(" Max lnL ", ln_integrand_value) #just to preserve output consistency
         
-        if save_all:
+        if opts.save_all_files:
             n_ESS = -1
             np.savetxt(opts.fname_output_integral+"+annotation_ESS.dat",[[ln_integrand_value, np.sqrt(var)/res, neff, n_ESS]],header=" lnL sigmaL neff n_ESS ")
             #File (3/7): MARG-0-0+annotation_ESS.dat
@@ -263,7 +259,7 @@ if (not opts.fname) and opts.using_eos is None:
     opts.using_eos_index = 0
     opts.n_events_to_analyze=1
     opts.verbose = True
-    opts.chunk_save = True
+    opts.chunk_save = False
     opts.save_all_files = False
 
 #Access NS pulsar mass data:
