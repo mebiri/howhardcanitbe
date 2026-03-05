@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-hyperpipe alternate marginalizer for NS mass distribution
+hyperpipe alternate marginalizer for NS mass distribution likelihoods
+aka Pulsar Likelihood Estimator (PLE)
 
 Compute the term L_k = \prod_k w_k = \sum_k ln(w_k), where w_k is the integral
    w_k = \int p(m) g_k(m) dm 
@@ -22,6 +23,11 @@ import sys
 internal_dtype = np.float32
 
 parser = argparse.ArgumentParser()
+#exclusive here
+parser.add_argument("--chunk-save",action='store_true',default=False,help="Save all output lines to one file instead of 1 file per line.")
+parser.add_argument("--save-all-files",action='store_true',help="If present, makes versions of 6 of the 7 files (no .xml) CIP creates (ignored if chunk-save is true)")
+parser.add_argument("--std-scale-factor",type=float,default=0.0001,help="Scale factor to adjust error provided by scipy.dblquad (usually very small)")
+
 #filenames
 parser.add_argument("--fname",help="filename of *.dat file [standard ILE output]")
 parser.add_argument("--fname-output-samples",default="output-ILE-samples",help="output posterior samples (default output-ILE-samples -> output-ILE)")
@@ -33,7 +39,7 @@ parser.add_argument("--using-eos-for-prior", action='store_true', default=None, 
 parser.add_argument("--using-eos-index", type=int, default=None, help="Index of EOS parameters in file.")
 parser.add_argument("--input-tides",action='store_true',help="Use input format with tidal fields included.")
 parser.add_argument("--input-eos-index",action='store_true',help="Use input format with eos index fields included")
-parser.add_argument("--n-events-to-analyze",default=1,type=int,help="Number of EOS realizations to analyze. Currently only supports 1")
+parser.add_argument("--n-events-to-analyze",default=1,type=int,help="Number of EOS realizations to analyze.")
 parser.add_argument("--eos-param", type=str, default=None, help="parameterization of equation of state")
 parser.add_argument("--eos-param-values", default=None, help="Specific parameter list for EOS")
 
@@ -69,16 +75,16 @@ parser.add_argument("--sampler-method",default="adaptive_cartesian",help="adapti
 parser.add_argument("--internal-use-lnL",action='store_true',help="integrator internally manipulates lnL. ONLY VIABLE FOR GMM AT PRESENT. ---TREATED AS TRUE IN THIS CODE BY DEFAULT---")
 parser.add_argument("--tripwire-fraction",default=0.05,type=float,help="Fraction of nmax of iterations after which n_eff needs to be greater than 1+epsilon for a small number epsilon")
 
-# Supplemental likelihood factors (not presently used here)
+# Supplemental likelihood factors (not used here)
 parser.add_argument("--supplementary-likelihood-factor-code", default=None,type=str,help="Import a module (in your pythonpath!) containing a supplementary factor for the likelihood.  Used to impose supplementary external priors of arbitrary complexity and external dependence. EXPERTS-ONLY")
 parser.add_argument("--supplementary-likelihood-factor-function", default=None,type=str,help="With above option, specifies the specific function used as an external likelihood. EXPERTS ONLY")
 
-opts=  parser.parse_args()
+opts = parser.parse_args()
 
 
-def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,eos_len,out_pts=1,match=True):
-    npts = len(pop_dat) #should be 1 in hyperpipe
-    print("npts:",npts)
+def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,out_pts=1,match=True):
+    npts = len(pop_dat) #usually 1 in hyperpipe, but can be more
+    print("Num lines to analyze:",npts)
     dat_out = None
     
     if not match:
@@ -87,10 +93,10 @@ def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,eos_len,out_pts=1,match=True):
     
     for n in np.arange(npts):
         line = pop_dat[n,pop_idx:pop_idx+3]
-        print("line",n,":",line)
+        if opts.verbose: print("line",n,":",line)
         
         if line[0] < line[1]:
-            print("WARNING: m2 > m1; outside valid mass domain; this line is invalid.")
+            print(" WARNING: m2 > m1; outside valid mass domain; line",n,"is invalid.")
             dat_out[n][0] = -np.inf
         else:
             #check 0 < sig < 0.5 (protection against puffing):
@@ -102,17 +108,18 @@ def loop_manager(m_obs,sig_obs,pop_dat,pop_idx,eos_len,out_pts=1,match=True):
             #2D Gaussian of population 
             rv = multivariate_normal(mean=line[:2], cov=(line[2]**2)*np.diag(np.ones(2)))
             
-            dat_out[n][0] = compute_product(m_obs,sig_obs,rv)
-        dat_out[n][1] = 0.001
-        dat_out[n][2:2+eos_len] = pop_dat[n,2:2+eos_len]
+            dat_out[n][0], dat_out[n][1] = compute_product(m_obs,sig_obs,rv)
+        dat_out[n][1] = dat_out[n][1]/opts.std_scale_factor
+        dat_out[n][2:pop_idx] = pop_dat[n,2:pop_idx] #assumes eos params first, then pop
         dat_out[n][pop_idx:pop_idx+3] = line
-    print("Output test:",dat_out[0])
+    if opts.verbose: print("Output test:",dat_out[0])
     
     return dat_out
     
 
 def compute_product(m_obs,sig_obs,pop_norm):
     partial_sum = 0.0
+    partial_var = 0.0
     for i in range(len(m_obs)):
         #distribution around real mass:
         g_k = multivariate_normal(mean=m_obs[i], cov=np.diag([sig_obs[i][0]**2,sig_obs[i][1]**2]))
@@ -142,6 +149,7 @@ def compute_product(m_obs,sig_obs,pop_norm):
             tybd = 3.0
         
         w_k = 0.0
+        err = 0.0
         if lxbd >= tybd: 
             #smallest m1 >= largest m2 -> rectangle fully within triangle
             #integrate over rectangle:
@@ -160,17 +168,39 @@ def compute_product(m_obs,sig_obs,pop_norm):
                 w_k1, err1 = dblquad(int_rv, lxbd, tybd, lybd, lambda x: x)
                 w_k2, err2 = dblquad(int_rv, tybd, rxbd, lybd, tybd)
                 w_k = w_k1 + w_k2
+                err = np.sqrt(err1**2 + err2**2) #correct error propagation
                 #print("Point (",m_obs[i][0],m_obs[i][1],") was a split rectangle/trapezoid.")
         
         partial_sum += np.log(w_k) #equivalent to opts.internal_use_lnl = True
+        partial_var += (err/w_k)**2 #correct error propagation
     
-    print(partial_sum)
-    return partial_sum
+    if opts.verbose: print(" ",partial_sum, np.sqrt(partial_var))
+    return partial_sum, np.sqrt(partial_var)
 
 
 #FUTURE: pipe to save_CIP_output.py? (same code)
 def save_results(out_grid, header):
     #NEED TO MATCH ALL CIP OUTPUT FILES FOR HYPERPIPE
+    if opts.chunk_save:
+        # remove invalid lines
+        indx_ok = np.ones(len(out_grid),dtype=bool)
+        #print("len index_ok:",len(indx_ok))
+        indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(out_grid[:,0]))) #check nans (shouldn't happen)
+        indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isinf(out_grid[:,0]))) #check +/-inf (can happen)
+        print('   Ignoring lines with lnL = -inf : {} '.format(len(out_grid)-np.sum(indx_ok)))
+        out_grid = out_grid[indx_ok]
+        
+        var = out_grid[:,1]/out_grid[:,0] #mimics sqrt(line[1]**2)/res behavior for single line
+        out_grid[:,1] = var
+        
+        #File (2/7): MARG-0-0+annotation.dat
+        np.savetxt(opts.fname_output_integral+"+annotation.dat",out_grid,header=header[:-1]) #skip newline char in header
+        print("Chunk file saved.")
+        return
+    
+    save_all = False
+    if opts.save_all_files: 
+        save_all = True
     #Note: CIP filenames not formatted to support multiple lines, at present
     for line in out_grid:
         res = line[0]
@@ -182,8 +212,9 @@ def save_results(out_grid, header):
         neff = opts.n_eff
         # Save result -- needed for odds ratios, etc.
         #   Warning: integral_result.dat uses *original* prior, before any reweighting
-        #File (1/7): MARG-0-0.dat
-        np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
+        if save_all:
+            #File (1/7): MARG-0-0.dat
+            np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
         
         eos_extra = []
         params_here = line[2:]#np.loadtxt(fname)[opts.using_eos_index][2:]
@@ -194,30 +225,31 @@ def save_results(out_grid, header):
             #File (2/7): MARG-0-0+annotation.dat
        
         print(" Max lnL ", ln_integrand_value) #just to preserve output consistency
-    
-        n_ESS = -1
-        np.savetxt(opts.fname_output_integral+"+annotation_ESS.dat",[[ln_integrand_value, np.sqrt(var)/res, neff, n_ESS]],header=" lnL sigmaL neff n_ESS ")
-        #File (3/7): MARG-0-0+annotation_ESS.dat
         
-        lnLmax = ln_integrand_value
-        weights = 1#np.exp(lnL-lnLmax)#*p/ps #will be e^0 = 1
-        
-        log_res_reweighted = lnLmax + np.log(np.mean(weights))
-        sigma_reweighted= np.std(weights,dtype=np.float64)/np.mean(weights)
-        np.savetxt(opts.fname_output_integral+"_withpriorchange.dat", [log_res_reweighted])  # should agree with the usual result, if no prior changes. Erm... about that...
-        #File (4/7): MARG-0-0_withpriorchange.dat
-        with open(opts.fname_output_integral+"_withpriorchange+annotation.dat", 'w') as file_out:
-            str_out = list(map(str,[log_res_reweighted, sigma_reweighted, neff]))
-            file_out.write("# " + annotation_header + "\n")
-            file_out.write(' '.join( str_out + eos_extra + ["\n"]))
-            #File (5/7): MARG-0-0_withpriorchange+annotation.dat
-        
-        #lalsimutils.ChooseWaveformParams_array_to_xml(P_list[:n_output_size],fname=opts.fname_output_samples,fref=P.fref)
-        #File (6/7): MARG-0-0.xml.gz - hopefully not needed...
-        lnL_list = [line[0]] #still just for the 1 line; sampler results in CIP
-        lnL_list = np.array(lnL_list,dtype=internal_dtype)#lnL_list created during downselecting in CIP
-        np.savetxt(opts.fname_output_samples+"_lnL.dat", lnL_list)
-        #File (7/7): MARG-0-0_lnL.dat - usually contains lnL of all samples    
+        if save_all:
+            n_ESS = -1
+            np.savetxt(opts.fname_output_integral+"+annotation_ESS.dat",[[ln_integrand_value, np.sqrt(var)/res, neff, n_ESS]],header=" lnL sigmaL neff n_ESS ")
+            #File (3/7): MARG-0-0+annotation_ESS.dat
+            
+            lnLmax = ln_integrand_value
+            weights = 1#np.exp(lnL-lnLmax)#*p/ps #will be e^0 = 1
+            
+            log_res_reweighted = lnLmax + np.log(np.mean(weights))
+            sigma_reweighted= np.std(weights,dtype=np.float64)/np.mean(weights)
+            np.savetxt(opts.fname_output_integral+"_withpriorchange.dat", [log_res_reweighted])  # should agree with the usual result, if no prior changes. Erm... about that...
+            #File (4/7): MARG-0-0_withpriorchange.dat
+            with open(opts.fname_output_integral+"_withpriorchange+annotation.dat", 'w') as file_out:
+                str_out = list(map(str,[log_res_reweighted, sigma_reweighted, neff]))
+                file_out.write("# " + annotation_header + "\n")
+                file_out.write(' '.join( str_out + eos_extra + ["\n"]))
+                #File (5/7): MARG-0-0_withpriorchange+annotation.dat
+            
+            #lalsimutils.ChooseWaveformParams_array_to_xml(P_list[:n_output_size],fname=opts.fname_output_samples,fref=P.fref)
+            #File (6/7): MARG-0-0.xml.gz - hopefully not needed...
+            lnL_list = [line[0]] #still just for the 1 line; sampler results in CIP
+            lnL_list = np.array(lnL_list,dtype=internal_dtype)#lnL_list created during downselecting in CIP
+            np.savetxt(opts.fname_output_samples+"_lnL.dat", lnL_list)
+            #File (7/7): MARG-0-0_lnL.dat - usually contains lnL of all samples    
         
         print("All files saved for this line.")
         
@@ -226,8 +258,13 @@ def save_results(out_grid, header):
 if (not opts.fname) and opts.using_eos is None:
     print("--Warning: Test Mode: using preset files--")
     opts.fname="NSmasses.txt" 
-    opts.using_eos="file:test_pop_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
+    opts.using_eos= "grid_test.txt"
+    #opts.using_eos="file:test_pop_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
     opts.using_eos_index = 0
+    opts.n_events_to_analyze=1
+    opts.verbose = True
+    opts.chunk_save = True
+    opts.save_all_files = False
 
 #Access NS pulsar mass data:
 mass_dat = np.genfromtxt(opts.fname,names=True) #will be NSmasses.txt (renamed from all.marg_net to event-0.net)
@@ -249,7 +286,7 @@ except Exception as e:
     sys.exit(0)
 param_names = list(pop_dat.dtype.names)
 pop_as_array = pop_dat.view((float, len(param_names)))#[:,2:] #skip first 2 cols
-print(pop_as_array)
+#print(pop_as_array[:,:3])
 print("dat size: (",len(pop_as_array),len(pop_as_array[0]),")")
 
 #adapted from ext_prior1.py
@@ -270,10 +307,10 @@ if len(pop_params_names) < 3:
     print("ERROR: Population data could not be initialized: 3 or more columns required.")
     sys.exit(0)
 
-dat_out = loop_manager(mass_list,sig_list,pop_as_array,pop_params_indx,len(eos_names))
+dat_out = loop_manager(mass_list,sig_list,pop_as_array,pop_params_indx)
 
 lineheader = ' '.join(map(str,param_names))+"\n" #to match CIP extracted header
-#print(linenew)
+#print(":"+lineheader+":")
 save_results(dat_out,lineheader)
 
 
