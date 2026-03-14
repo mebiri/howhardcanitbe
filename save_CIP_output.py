@@ -18,8 +18,10 @@ parser.add_argument("--fname-output-samples",default="output-ILE-samples",help="
 parser.add_argument("--fname-output-integral",default="integral_result",help="output filename for integral result. Postfixes appended")
 parser.add_argument("--n-eff",default=3e3,type=float)
 parser.add_argument("--failstate",type=int,default=0,help="EXCLUSIVE here: tells code how to handle incoming data; 0 leaves input unchanged.")
+parser.add_argument("--fill-lnL-val",type=float,default=-1e6,help="EXCLUSIVE here: fiducial value for lnL when --failstate != 0. WARNING: lnL will be replaced for ALL lines, if n-events > 1.")
 #(OPTIONAL):
-parser.add_argument("--save-all",default=True,help="EXCLUSIVE here: how many of the CIP output files to make; True=6, False=1 (+annotation.dat)")
+parser.add_argument("--chunk-save",action='store_true',help="Save all output lines to one file instead of 1 file per line.")
+parser.add_argument("--save-all",default=True,help="EXCLUSIVE here: how many of the CIP output files to make: True=6, False=1 (+annotation.dat)")
 #parser.add_argument("--outdat",default=None,help="EXCLUSIVE here: direct line(s) of output to save in CIP file formats")
 parser.add_argument("--using-eos", type=str, default=None, help="Name of EOS.  Fit parameter list should physically use lambda1, lambda2 information (but need not). If starts with 'file:', uses a filename with EOS parameters ")
 parser.add_argument("--using-eos-index", type=int, default=None, help="Index of EOS parameters in file.")  
@@ -76,6 +78,22 @@ opts = parser.parse_args()
 #can be called externally, maybe (Alt_marg.py pref.) - need to setup missing opts
 def save_results(out_grid, header, save_all=True):
     #NEED TO MATCH ALL CIP OUTPUT FILES FOR HYPERPIPE
+    if opts.chunk_save and len(out_grid) > 1:
+        # remove invalid lines
+        indx_ok = np.ones(len(out_grid),dtype=bool)
+        indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(out_grid[:,0]))) #check nans (shouldn't happen)
+        indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isinf(out_grid[:,0]))) #check +/-inf (can happen)
+        print('   Ignoring lines with lnL = -inf : {} '.format(len(out_grid)-np.sum(indx_ok)))
+        out_grid = out_grid[indx_ok]
+        
+        var = out_grid[:,1]/out_grid[:,0] #mimics sqrt(line[1]**2)/res behavior for single line
+        out_grid[:,1] = var
+        
+        #File (2/7): MARG-0-0+annotation.dat
+        np.savetxt(opts.fname_output_integral+"+annotation.dat",out_grid,header=header[:-1]) #skip newline char in header
+        print("Chunk file saved.")
+        return
+    
     #Note: CIP filenames not formatted to support multiple lines, at present
     for line in out_grid:
         res = line[0]
@@ -83,10 +101,10 @@ def save_results(out_grid, header, save_all=True):
             print("Note: lnL = -inf detected; skipping filesaves for this line.")
             continue
         var_out = line[1]**2 
-        if line[1] == 0.0:
-            var_out = 0.00001 
-        elif not save_all:
+        if not save_all:
             var_out = line[1]
+        elif line[1] == 0.:
+            var_out = 0.00001
         else:
             var_out = np.sqrt(line[1]**2)/res
         ln_integrand_value = res
@@ -223,19 +241,21 @@ if opts.using_eos is None:
     print("--Warning: Test Mode: using preset files--")
     opts.using_eos="file:test_pop_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
     opts.using_eos_index = 0
+    opts.failstate = 3
+    opts.fill_lnL_val = -1000
 
 #Access EOS file data:
 fname = opts.using_eos.replace('file:', '')
-pop_dat = None
+dat_all = np.genfromtxt(fname,names=True)
 try:
-    check_dat = np.genfromtxt(fname,names=True)[opts.using_eos_index] #test for index being out of range
-    pop_dat = np.genfromtxt(fname,names=True)[opts.using_eos_index:opts.using_eos_index+opts.n_events_to_analyze] #should be 1 line if n_events=1
+    check_dat = dat_all[opts.using_eos_index]#np.genfromtxt(fname,names=True)[opts.using_eos_index] #test for index being out of range
 except Exception as e:
     print(" Fail: EOS index out of range:\n   ",e)
     sys.exit(0)
+pop_dat = dat_all[opts.using_eos_index:opts.using_eos_index+opts.n_events_to_analyze] #should be 1 line if n_events=1
 param_names = list(pop_dat.dtype.names)
 pop_as_array = pop_dat.view((float, len(param_names)))#[:,2:] #skip first 2 cols
-print(pop_as_array)
+print(pop_as_array[0])
 print(" retrieved dat size: (",len(pop_as_array),len(pop_as_array[0]),")")
 
 dat_out = np.zeros((len(pop_as_array),len(pop_as_array[0])))
@@ -243,12 +263,13 @@ savetype=opts.save_all
 if opts.failstate == 3:
     #EOS creation failed in CIP
     dat_out[:,2:] = pop_as_array[:,2:]
-    dat_out[:,0] = -1000000.0 #fiducial value
+    dat_out[:,0] = opts.fill_lnL_val #fiducial value
     dat_out[:,1] = 0.001 #fiducial value
     savetype=False
 else:
     dat_out[:,:] = pop_as_array[:,:]
 
+#print(dat_out)
 lineheader = ' '.join(map(str,param_names))+"\n" #to match CIP extracted header
 save_results(dat_out,lineheader,save_all=savetype)
 
