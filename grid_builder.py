@@ -7,16 +7,16 @@ Contains various functions for creating grids of points
 
 import numpy as np
 import argparse
-#import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--mode',type=str,default="inj",help="Which function to run: mixed_pop, mixed_pop_eos, pop_eos, static, mass_Lambda, inj")
+parser.add_argument('--mode',type=str,default=None,help="REQUIRED: Which function to run: pop_mixed, pop_mixed_eos, pop_eos, static, mass_Lambda, inj")
 parser.add_argument('--npts',type=int,default=3000,help="Number of test points to produce.")
 parser.add_argument('--eos-index',type=int,default=0,help="Line of EOS file to use for static model.")
-parser.add_argument('--mass-mean',type=float,default=1.4,help="mean to draw pop masses from.")
-parser.add_argument('--mass-sig',type=float,default=0.1,help="width of pop for drawing masses")
-parser.add_argument('--eos-file',type=str,default="Parametrized-EoS_maxmass_EoS_samples.txt")
-parser.add_argument('--units',type=str,default="[m1, m2",help="units of grid masses: m1,m2 or mc,eta")
+parser.add_argument('--mass-mean',type=float,default=1.4,help="mean to draw pop masses from, can be provided as list.")
+parser.add_argument('--mass-sig',type=float,default=0.1,help="width of pop for drawing masses, can be provided as list")
+parser.add_argument('--eos-file',type=str,default=None,help="used if provided; leave blank for mass-only grid")
+parser.add_argument('--hold-mass',type=int,default=2,help="mass to hold constant for static model (0 for none)")
+parser.add_argument('--units',type=str,default="[m1, m2]",help="units of grid masses: m1,m2 or mc,eta")
 parser.add_argument('--inj-masses',type=str,default=None,help="filepath to masses for building PE injection file.")
 parser.add_argument('--inj-z',type=float,default=0.0099,help="redshift for fake PE injections file")
 parser.add_argument('--inj-ra',type=str,default="13:09:48",help="RA (str HH:MM:SS) for fake PE injections file")
@@ -36,7 +36,7 @@ def symRatio(m1, m2):#this is eta
     
 
 #makes unit1 unit2 sig grid
-def make_mass_grid(npts,means,sig,units):
+def make_pop_grid(npts,means,sig,units):
     #Create npts pairs of random points in a grid space    
     from scipy.stats import multivariate_normal
     rv = multivariate_normal(mean=means, cov=0.01*np.diag(np.ones(len(means))))
@@ -68,7 +68,7 @@ def make_mass_grid(npts,means,sig,units):
         dat_alt[:,0] = m1
         dat_alt[:,1] = m2
     
-    ns = abs(np.random.normal(loc=sig, scale=sig, size=npts)) #must have sig>0
+    ns = abs(np.random.normal(loc=sig, scale=sig/4, size=npts)) #must have sig>0
     ns_alt = ns.T
     
     grid = np.zeros((npts,len(means)+3))
@@ -86,7 +86,7 @@ def make_mass_grid(npts,means,sig,units):
 
 
 #makes eos + unit1 unit2 sig grid
-def make_mass_grid_with_eos(npts,means,sig,units,eos_cols=None,eos_file=None,match_eos=True):
+def make_alt_pop_with_eos(npts,means,sig,units,eos_cols=None,eos_file=None,match_eos=True):
     eos_dat = None
     eos_names = eos_cols
     dat_len = npts
@@ -162,7 +162,7 @@ def make_pop_with_eos(npts,mu,sig=0.2,eos_file=None,match_eos=True):
     eos_dat = None
     eos_names = []
     dat_len = npts
-    eos_title = ""
+    eos_title = "_none"
     if eos_file is not None:
         eos_dat = np.genfromtxt(eos_file,dtype='float64',names=True)
         print("size of eos data:",eos_dat.shape)
@@ -174,11 +174,11 @@ def make_pop_with_eos(npts,mu,sig=0.2,eos_file=None,match_eos=True):
         else:
             print("Note: data will be truncated to",dat_len,"lines.")
     
-    offset = 0
-    print("Original eos file columns:",eos_names)
-    if eos_names[0] == "lnL":
-        eos_names = eos_names[2:]
-        offset = 2
+        offset = 0
+        print("Original eos file columns:",eos_names)
+        if eos_names[0] == "lnL":
+            eos_names = eos_names[2:]
+            offset = 2
     num_eos_cols = len(eos_names)
     print(num_eos_cols,"EOS columns:",eos_names)
     
@@ -272,6 +272,7 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
         mu1 = mu[0]
         mu2 = mu[1]
     name_info = str(int(mu1*10))+"_"+str(int(mu2*10))+"_h"+str(hold)
+    print("Save info:",name_info)
     
     sig1 = sig2 = 0.1
     if single_sig:
@@ -327,7 +328,7 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     
     #print("m1:\n",m1)
     #print("m2:\n",m2) 
-    print("Shape check:",dat1.shape, m1.shape,dat2.shape, m2.shape)
+    print("Shape check:",dat1.shape, m1.shape, dat2.shape, m2.shape)
     #dat_alt = np.zeros((2,dat_len)).T
     #dat_alt[:,0] = m1
     #dat_alt[:,1] = m2
@@ -374,8 +375,8 @@ def generate_mass_Lambda_grid(mu, sig, npts, filepath, eos_index):
     m2 = np.minimum(dat_alt[:,0], dat_alt[:,1])
 
     print("Shape check:",dat.shape, m1.shape)
-    dat_alt[:,0] = m1
-    dat_alt[:,1] = m2
+    #dat_alt[:,0] = m1
+    #dat_alt[:,1] = m2
     
     #This gets one line of data; it will also get the names for each column, after header:
     eos_dat = np.genfromtxt(filepath,names=True)[eos_index]   
@@ -459,7 +460,7 @@ def make_fake_injection_file(inj_file, redshift, det_time, ra, dec):
         from astropy.cosmology import Planck15
         import astropy.units as u
         # Use Planck15 luminosity distance in Mpc
-        z = grid[:,18].to_numpy()
+        z = grid[:,18]#.to_numpy()
         # astropy returns Quantity; convert to plain float in Mpc
         dl = Planck15.luminosity_distance(z).to(u.Mpc).value
         grid[:,26] = dl
@@ -474,42 +475,31 @@ def make_fake_injection_file(inj_file, redshift, det_time, ra, dec):
     
 
 if __name__ == "__main__":
-    #Fix the random generator's seed to produce consistent results (for testing):
-    np.random.seed(75108)#42179)
+    if opts.mode is None and opts.eos_file is None:
+        #TEST/DEFAULT MODE
+        print(" --NOTE: Assuming default mode & EOS--")
+        #Fix the random generator's seed to produce consistent results (for testing):
+        np.random.seed(75108)#42179)
+        opts.mode= "pop_eos"
+        opts.eos_file = "Parametrized-EoS_maxmass_EoS_samples.txt"
+        #opts.mass_mean = [20,10]
+        opts.mass_mean = [1.4,1.1] #set up for static test
+        opts.mass_sig = [0.1,0.001] #set up for static test
+        sc = 0.5
+        opts.units = ['m1','m2']
     
     
-    #if opts.mode == 0:
-    num_pop = opts.npts
-    init_means = [20,10]
-    sc = 0.5
-    out_units = ['m1','m2']
-        #ln = 0
-        #eos = "Parametrized-EoS_maxmass_EoS_samples.txt"
-    #else:
-    #    num_pop = opts.npts
-    #    mu = opts.mass_mean
-    #    sigma = opts.mass_sig
-    #    ln = opts.static_eos_line
-    #    eos = opts.eos_file
-    
-    #eos_file = "Parametrized-EoS_maxmass_EoS_samples.txt"
-    #eos_title = "_"+eos_file[:len(eos_file)-4].split("_")[0].split("-")[0]
-    #print(eos_title)
-    
-    opts.mass_mean = [1.4,1.1]
-    opts.mass_sig = [0.1,0.001]
-    
-    if opts.mode == "mixed_pop":
-        make_mass_grid(num_pop, init_means, sc, out_units)
-    elif opts.mode == "mixed_pop_eos":
+    if opts.mode == "pop_mixed":
+        make_pop_grid(opts.npts, opts.mass_mean, sc, opts.units)
+    elif opts.mode == "pop_mixed_eos":
         #make_mass_grid_with_eos(num_pop, init_means, sc, out_units,eos_cols=["gamma1","gamma2","gamma3","gamma4"])
-        make_mass_grid_with_eos(num_pop, init_means, sc, out_units,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")
+        make_alt_pop_with_eos(opts.npts, opts.mass_mean, sc, opts.units,eos_file=opts.eos_file)
     elif opts.mode == "pop_eos":
-        make_pop_with_eos(num_pop,1.4,sig=.1,eos_file="Parametrized-EoS_maxmass_EoS_samples.txt")
+        make_pop_with_eos(opts.npts,1.39,sig=.14,eos_file=opts.eos_file)
     elif opts.mode == "static":
-        make_pop_with_static_eos(opts.npts,opts.mass_mean,sig=opts.mass_sig,line=opts.static_eos_line,eos_file=opts.eos_file,hold=2)
+        make_pop_with_static_eos(opts.npts,opts.mass_mean,sig=opts.mass_sig,line=opts.eos_index,eos_file=opts.eos_file,hold=opts.hold_mass)
     elif opts.mode == "mass_Lambda":
-        generate_mass_Lambda_grid(1.39, 0.14, 100, "Parametrized-EoS_maxmass_EoS_samples.txt", 0)
+        generate_mass_Lambda_grid(1.39, 0.14, 100, opts.eos_file, 0)
     elif opts.mode == "inj":
         if opts.inj_masses is None:
             injection_file = "mass_lambda_grid__Parametrized-EoS_0.txt"
