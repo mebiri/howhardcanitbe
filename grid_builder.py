@@ -271,7 +271,7 @@ def make_pop_with_static_eos(npts,mu,sig=0.1,eos_file=None,line=0,hold=0):
     else:
         mu1 = mu[0]
         mu2 = mu[1]
-    name_info = str(int(mu1*10))+"_"+str(int(mu2*10))+"_h"+str(hold)
+    name_info = str(mu1).replace(".","")[:4]+"_"+str(mu2).replace(".","")[:4]+"_h"+str(hold)
     print("Save info:",name_info)
     
     sig1 = sig2 = 0.1
