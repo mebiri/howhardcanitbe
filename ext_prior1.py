@@ -23,7 +23,7 @@ import sys
 Imports used later in code:
  import RIFT.physics.EOSManager as EOSManager
  import RIFT.lalsimutils as lalsimutils
- from scipy.stats import norm
+ --from scipy.stats import norm
  from scipy.integrate import dblquad
 '''
 
@@ -340,6 +340,7 @@ def initialize_me(**kwargs):
     if len(eos_names) > 0 and (rift):
         eos = generate_eos(eos_dat, eos_names)
         constraint_mmax_factor = mmax_constraint(eos.mMaxMsun) 
+        print("m_max constraint factor for this EOS:",constraint_mmax_factor)
     else:
         print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
         eos = None
