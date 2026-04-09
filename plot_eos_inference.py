@@ -55,33 +55,39 @@ parser = argparse.ArgumentParser()#description = argparse_help_dict['help'])
 
 # basic arguments
 parser.add_argument('--eos-file', action = 'append')#, help = argparse_help_dict['tabular-eos-file'], required = True)
+parser.add_argument('--num-eos',default=1,type=int,help="Number of lines of posterior file to plot EOS curves for (starts at 0)")
 
 opts = parser.parse_args()
 
+posterior_header = None
 #NOTE: ONLY THESE EOS_PARAMS HANDLED CURRENTLY: spectral, cs_spectral, PP
-def generate_eos(eos_line, eos_headers, eos_param="spectral"):
+def generate_eos(eos_line, eos_headers, eos_param="spectral",save_header=True):
     print("Creating EOS object of type",eos_param,"using given data line.")
     
-    eos_names = eos_headers
-    if ((eos_param == "spectral" or eos_param == "cs_spectral") and eos_names[0] != "gamma1") or (eos_param=="PP" and eos_names[1] != "gamma1"):
-        print("WARNING: Unsupported gamma labels in EOS names found:",eos_names,"will relabel.")
-        counter = 0
-        indx= 0
-        while counter < 4 and indx < len(eos_headers):#max 4 gamma cols, or stop at end of list
-            if eos_headers[indx][0] == 'g' and eos_headers[indx][-1] == str(counter):#ensure gamma col
-                counter += 1
-                eos_names[indx] = "gamma"+str(counter)
-            indx+=1
-        print("Relabeled EOS headers:",eos_names)  
-        #TODO: may need to handle re-sorting for spectral types if g1 not first, as a precaution
-    
+    if eos_headers == posterior_header:
+        eos_names = posterior_header
+        print("Relabeling EOS using existing headers:",eos_names) 
+    else:
+        eos_names = eos_headers
+        if ((eos_param == "spectral" or eos_param == "cs_spectral") and eos_names[0] != "gamma1") or (eos_param=="PP" and eos_names[1] != "gamma1"):
+            print("WARNING: Unsupported gamma labels in EOS names found:",eos_names,"will relabel.")
+            counter = 0
+            indx= 0
+            while counter < 4 and indx < len(eos_headers):#max 4 gamma cols, or stop at end of list
+                if eos_headers[indx][0] == 'g' and eos_headers[indx][-1] == str(counter):#ensure gamma col
+                    counter += 1
+                    eos_names[indx] = "gamma"+str(counter)
+                indx+=1
+            print("Relabeled EOS headers:",eos_names)  
+            #TODO: may need to handle re-sorting for spectral types if g1 not first, as a precaution
+        
     #Better than CIP, for sure...
     spec_param_array = eos_line 
     spec_params ={}
 
     for i in range(len(eos_names)):
         spec_params[eos_names[i]]=spec_param_array[i]
-    print("EOS data:\n",spec_params)
+    #print("EOS data:\n",spec_params)
     
     #try: #test code
     #    import RIFT.physics.EOSManager as EOSManager
@@ -105,8 +111,9 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral"):
             raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
     except Exception as e:
         print("=====\n FAILSTATE 3: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
-        sys.exit(64) #special exit code for shell_wrapper_cip.sh to detect (hopefully)!
+        #sys.exit(64) #special exit code for shell_wrapper_cip.sh to detect (hopefully)!
         #print(" WARNING: RETURNED EOS OBJECT WILL BE",type(eos_base),"!\n=====")
+        eos_base = None
     
     return eos_base
 
@@ -150,6 +157,43 @@ def initialize_one_eos():
         print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
         my_eos = None
 
+my_eos_list = None
+def initialize_eos():
+    #This gets one line of data; it will also get the names for each column, after header:
+    dat = np.genfromtxt(opts.eos_file,names=True)[opts.num_eos-1]
+    param_names = dat.dtype.names #separate out the names from the data
+    all_params = dat.view((float, len(param_names)))
+    print(all_params[0])
+
+    eos_names = []
+    eos_dat = np.zeros(len(all_params),len(param_names[2:]))
+    #pop_params = []
+    #pop_params_names = [] #yes this is literally just for the one print statement
+    pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
+    j= 0
+    for i in param_names[2:]: #should be anything past lnL, sig_lnL
+        if i in pop_params_lib:
+            continue
+            #pop_params_names.append(i)
+            #pop_params.append(all_params[:,param_names.index(i)])
+        else: #anything that isn't m1, m2, sig
+            eos_names.append(i)
+            eos_dat[:,j] = all_params[:,param_names.index(i)]
+            j+=1
+    
+    global my_eos_list
+    if len(eos_names) > 0:
+        for i in len(eos_dat):
+            try:
+                my_eos = generate_eos(eos_dat[i], eos_names)
+                my_eos_list.append(my_eos)
+            except:
+                print("  eos line",i,"failed to generate.")
+                continue
+    else:
+        print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
+        my_eos_list = None
+
 #my_eos = EOSManager.EOSLALSimulation('SLy')
 #eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
 
@@ -176,17 +220,18 @@ def render_eos(eos, xvar='energy_density', yvar='pressure',units='cgs',npts=100,
     return None
 
 
-initialize_one_eos()
+initialize_eos()
 
-if my_eos is None:
-    print("EOS creation failed; exiting.")
+if my_eos_list is None:
+    print("All provided EOS parameters failed; exiting.")
     sys.exit(0)
-print("EOS initialized.")
+print("EOS list initialized; total:",len(my_eos_list))
 
 #fig_base= None
 #fig_base = 
-render_eos(my_eos.eos,'rest_mass_density', 'pressure')
-print("EOS rendered.")
+for e in my_eos_list:
+    render_eos(e.eos,'rest_mass_density', 'pressure')
+print("All EOS rendered.")
 
 dpi_base=200
 res_base = 4*dpi_base
