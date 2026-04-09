@@ -9,7 +9,7 @@ Created on Tue Apr  7 02:00:39 2026
 
 #! /usr/bin/env python
 
-#import numpy as np
+import numpy as np
 import argparse
 #import RIFT.plot_utilities.EOSPlotUtilities as eosplot
 
@@ -21,7 +21,7 @@ import argparse
 # The script has a functionality to choose custom labels and colors for the posterior samples.
 # If multiple tabular EOS files are provided, the user will have to specify which ones to plot and to use for the posterior samples.
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import RIFT.physics.EOSManager as EOSManager
 #from natsort import natsorted
 import warnings
@@ -31,10 +31,167 @@ import ast
 import textwrap
 
 import RIFT.plot_utilities.TabularEOSPlotUtilities as tabplot
-import RIFT.plot_utilities.EOSPlotUtilities as eosplot
+#import RIFT.plot_utilities.EOSPlotUtilities as eosplot
+import lalsimulation as lalsim
 
-my_eos = EOSManager.EOSLALSimulation('SLy')
-eosplot.render_eos(my_eos.eos,'rest_mass_density', 'pressure')
+try:
+    import matplotlib
+    print(" Matplotlib backend ", matplotlib.get_backend())
+    if matplotlib.get_backend() == 'agg':
+        fig_extension = '.png'
+        bNoInteractivePlots=True
+    else:
+        matplotlib.use('agg')
+        fig_extension = '.png'
+        bNoInteractivePlots =True
+    from matplotlib import pyplot as plt
+    bNoPlots=False
+except:
+    print(" Error setting backend")
+
+import matplotlib.pyplot as plt
+
+parser = argparse.ArgumentParser()#description = argparse_help_dict['help'])
+
+# basic arguments
+parser.add_argument('--eos-file', action = 'append')#, help = argparse_help_dict['tabular-eos-file'], required = True)
+
+opts = parser.parse_args()
+
+#NOTE: ONLY THESE EOS_PARAMS HANDLED CURRENTLY: spectral, cs_spectral, PP
+def generate_eos(eos_line, eos_headers, eos_param="spectral"):
+    print("Creating EOS object of type",eos_param,"using given data line.")
+    
+    eos_names = eos_headers
+    if ((eos_param == "spectral" or eos_param == "cs_spectral") and eos_names[0] != "gamma1") or (eos_param=="PP" and eos_names[1] != "gamma1"):
+        print("WARNING: Unsupported gamma labels in EOS names found:",eos_names,"will relabel.")
+        counter = 0
+        indx= 0
+        while counter < 4 and indx < len(eos_headers):#max 4 gamma cols, or stop at end of list
+            if eos_headers[indx][0] == 'g' and eos_headers[indx][-1] == str(counter):#ensure gamma col
+                counter += 1
+                eos_names[indx] = "gamma"+str(counter)
+            indx+=1
+        print("Relabeled EOS headers:",eos_names)  
+        #TODO: may need to handle re-sorting for spectral types if g1 not first, as a precaution
+    
+    #Better than CIP, for sure...
+    spec_param_array = eos_line 
+    spec_params ={}
+
+    for i in range(len(eos_names)):
+        spec_params[eos_names[i]]=spec_param_array[i]
+    print("EOS data:\n",spec_params)
+    
+    #try: #test code
+    #    import RIFT.physics.EOSManager as EOSManager
+    #except:
+    #    print("-- ERROR: could not import EOSManager. --") #test code, only on local machine
+        #return None
+    
+    eos_name="default_eos_name"
+    eos_base = None
+    try:
+        if eos_param == 'spectral':
+            #expect cols: gamma1, gamma2, gamma3, gamma4 (or fewer; must be at least 2 cols)
+            eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
+        elif eos_param == 'cs_spectral' and len(spec_param_array) >=4:
+            #expect cols: gamma1, gamma2, gamma3, gamma4
+            eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
+        elif eos_param == 'PP' and len(spec_param_array) >=4:
+            #expect cols: logP1, gamma1, gamma2, gamma3
+            eos_base = EOSManager.EOSPiecewisePolytrope(name=eos_name,params_dict=spec_params)
+        else:
+            raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
+    except Exception as e:
+        print("=====\n FAILSTATE 3: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
+        sys.exit(64) #special exit code for shell_wrapper_cip.sh to detect (hopefully)!
+        #print(" WARNING: RETURNED EOS OBJECT WILL BE",type(eos_base),"!\n=====")
+    
+    return eos_base
+
+
+my_eos = None
+def initialize_one_eos():
+    #This gets one line of data; it will also get the names for each column, after header:
+    dat = np.genfromtxt(opts.eos_file,names=True)[0]   # Parse file for them, to reduce need for burden parsing, and avoid burden/confusion.
+    #all_params = np.loadtxt(opts.eos_file,names=True)[0]
+    
+    param_names = dat.dtype.names #separate out the names from the data
+    all_params = dat.view((float, len(param_names)))
+    print(all_params)
+    #args_init = {'input_line' : dat_as_array, 'param_names':param_names}#, 'cip_param_names':coord_names}  # pass the recordarray broken into parts, for convenience
+    
+    #dat_orig_names = param_names[2:] #Adapted from ye old example_gaussian.py
+    #print("Original field names:", dat_orig_names)
+    
+    #supplemental_init = initialize_me #getattr(external_likelihood_module, 'initialize_me') #find initialize_me()
+    #supplemental_init(**args_init) 
+    eos_names = []
+    eos_dat = []
+    pop_params = []
+    pop_params_names = [] #yes this is literally just for the one print statement
+    pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
+    for i in param_names[2:]: #should be anything past lnL, sig_lnL
+        if i in pop_params_lib:
+            pop_params_names.append(i)
+            pop_params.append(all_params[param_names.index(i)])
+        else: #anything that isn't m1, m2, sig
+            eos_names.append(i)
+            eos_dat.append(all_params[param_names.index(i)])
+    
+    global my_eos
+    #global constraint_mmax_factor
+    if len(eos_names) > 0:
+        my_eos = generate_eos(eos_dat, eos_names)
+        #constraint_mmax_factor = mmax_constraint(eos.mMaxMsun) 
+        #print("m_max constraint factor for this EOS:",constraint_mmax_factor)
+    else:
+        print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
+        my_eos = None
+
+#my_eos = EOSManager.EOSLALSimulation('SLy')
+#eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
+
+def render_eos(eos, xvar='energy_density', yvar='pressure',units='cgs',npts=100,label=None,logscale=True,verbose=False,**kwargs):
+
+    min_pseudo_enthalpy = 0.005
+    max_pseudo_enthalpy = lalsim.SimNeutronStarEOSMaxPseudoEnthalpy(eos)
+    hvals = max_pseudo_enthalpy* 10**np.linspace( np.log10(min_pseudo_enthalpy/max_pseudo_enthalpy),  -1e-4,num=npts)
+    if verbose:
+        print(hvals,min_pseudo_enthalpy, max_pseudo_enthalpy)
+
+    qry = EOSManager.QueryLS_EOS(eos)
+
+    xvals = qry.extract_param(xvar,hvals)
+    yvals = qry.extract_param(yvar,hvals)
+    if verbose:
+        print(np.c_[xvals,yvals])
+        
+    
+    if logscale:
+        plt.loglog(xvals, yvals,label=label,**kwargs)
+    else:
+        plt.plot(xvals, yvals,label=label,**kwargs)
+    return None
+
+
+initialize_one_eos()
+
+if my_eos is None:
+    print("EOS creation failed; exiting.")
+    sys.exit(0)
+print("EOS initialized.")
+
+#fig_base= None
+#fig_base = 
+render_eos(my_eos.eos,'rest_mass_density', 'pressure')
+print("EOS rendered.")
+
+dpi_base=200
+res_base = 4*dpi_base
+plt.savefig("test_eos_plot"+fig_extension,dpi=res_base)
+print("Figure saved, supposedly.")
 
 sys.exit(0)
 
