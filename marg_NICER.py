@@ -226,8 +226,9 @@ def make_EOS_TOV_from_EOSManager(eos, causal = True, make_monotonic_causal = Tru
         reprimand_eos=None
         try:
             reprimand_eos = EOSManager.EOSReprimand(param_dict=param_dict)
-        except :
-            print(eos[0])
+        except Exception as e:
+            print("ERROR:",e)
+            raise Exception("Could not retreive Reprimand EOS from EOS Manager")
         
         return reprimand_eos, param_dict
     
