@@ -106,8 +106,10 @@ def boundary_integration_checks(pop,mass_bounds):
     #Check that d1, d2, d3 are positive -> negative means outside pop range
     if d1 < 0 or d2 < 0 or d3 < 0 or pop_params[0] < m_min or pop_params[1] > m_max:
         print("=====\n FAILSTATE 4: 1 OR MORE MASSES OUTSIDE VALID RANGE. EXITING.\n=====")
-        sys.exit(0)
-        #return 0 #set normalization constant to 0, so lnL = -infinity
+        if cip_faster_state:
+            return -1 #set normalization constant to 0, so lnL = -infinity
+        else:
+            sys.exit(0)
     
     d1c = False
     d2c = False
@@ -223,8 +225,10 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral"):
             raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
     except Exception as e:
         print("=====\n FAILSTATE 3: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
-        sys.exit(64) #special exit code for shell_wrapper_cip.sh to detect (hopefully)!
-        #print(" WARNING: RETURNED EOS OBJECT WILL BE",type(eos_base),"!\n=====")
+        if cip_faster_state:
+            return None #should be fine
+        else:
+            sys.exit(64) #special exit code for shell_wrapper_cip.sh to detect (hopefully)!
     
     return eos_base
 
@@ -239,6 +243,7 @@ cfunc = 0
 cv_params = None
 eos = None
 constraint_mmax_factor = 0.0
+cip_faster_state = False
 
 #Try to import lalsimutils (will fail on local machines)
 try:
@@ -269,6 +274,11 @@ def initialize_me(**kwargs):
         all_params = kwargs['input_line']#used by CIP - single line of data from eos file
         #print("Given params:",kwargs)
     
+    if 'cip_faster' in kwargs:
+        global cip_faster_state 
+        cip_faster_state = kwargs['cip_faster']
+        print(" cip_faster status is:",cip_faster_state)
+    
     #----- Initialize unit conversion function -----
     global cfunc, cv_params
     rift = False
@@ -276,9 +286,9 @@ def initialize_me(**kwargs):
     cvtest, cv_params = conversion_check(kwargs['cip_param_names'])
     
     if cvtest == 0:
-        print("  FAILSTATE 1: could not find valid mass coordinate conversion. Exiting.")
+        print("  ===== FAILSTATE 1: could not find valid mass coordinate conversion. Exiting. =====")
         #return #this will break CIP, most likely
-        sys.exit(0)
+        sys.exit(0) #will fail every time in cip_faster loop, just exit
     else:
         if (rift) or cvtest != 3: #lalsimultils imported or not needed
             cfunc = cvtest #cvtest can be 1, 2, or 3
@@ -312,10 +322,10 @@ def initialize_me(**kwargs):
           "\nEOS parameters found:",eos_names)
     
     if len(pop_params) < 3:
-        print("  FAILSTATE 2: could not initialize population data: 3 or more columns required. Exiting.")
+        print("  ===== FAILSTATE 2: could not initialize population data: 3 or more columns required. Exiting. =====")
         #pop_params = None
         #n_dim = 0
-        sys.exit(0)
+        sys.exit(0) #Will fail every time if in cip_faster loop, just exit
     else:
         #NOTE: supports 2+1 or 2+2-type mass/sig columns. Not 3+1, etc.
         n_dim = (len(pop_params)%2)+int(len(pop_params)/2) #expect 1 sigma per mass or pair of masses
@@ -339,11 +349,13 @@ def initialize_me(**kwargs):
     global constraint_mmax_factor
     if len(eos_names) > 0 and (rift):
         eos = generate_eos(eos_dat, eos_names)
+        if eos is None and cip_faster_state:
+            return False
         constraint_mmax_factor = mmax_constraint(eos.mMaxMsun) 
         print("m_max constraint factor for this EOS:",constraint_mmax_factor)
     else:
         print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
-        eos = None
+        eos = None #TODO: will cause crash in CIP_faster 
     
     #----- Initialize normalization constant -----
     if pop_params is not None:
@@ -355,12 +367,16 @@ def initialize_me(**kwargs):
             else:
                 mbounds = [3,30] #Black hole mass range
             nm = boundary_integration_checks(pop_params,mbounds)#only supports [m1 m2 sig]
+            if nm == -1 and cip_faster_state:
+                return False
         else:
             print("WARNING: unable to check population boundaries. Assuming normalized population.")
     #else: nm is set to 1 by default (i.e., entire normal curve is within domain)
     print("Normalization constant set to",nm)
     
     print("----- END EXTERNAL PRIOR INITIALIZATION -----")
+    if cip_faster_state:
+        return True #now required by CIP_faster interface
 
 
 ####################### EOS RETRIEVAL #######################
@@ -384,7 +400,7 @@ def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
         #print("Did you know that, because you own a 2004 Honda Prius, you are entitled to up to $16,000 of insurance for the next 5 years at your local Kia dealership?")
         #print("All you have to do is fill in your name, address, and registration (andgivemeallofyourmoney), and we can get you set up in just 10 minutes!")
         print("Unfortunately, we have no EOS for you today; sorry.")
-        return None #CIP will ignore the EOS (hopefully)
+        return None #CIP will probably crash, CIP_faster will definitely crash on lal conversion
 
 
 ####################### LIKELIHOOD EVAL #######################
