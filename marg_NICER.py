@@ -292,6 +292,20 @@ def likelihood_evaluation():
     dat_orig_names = param_names[2:] #ignore lnL, sig_lnL - probably don't need this
     print("Original field names ", dat_orig_names)
     
+    #detect macroiteration
+    eos_file = fname.split("/")[-1]
+    if eos_file.startswith("grid-"): #avoid puff grids
+        macroit = int(eos_file.split(".")[0][-1]) #gets X in grid-X.dat == macroiteration
+        print(" macroiteration detected:",macroit)
+        if macroit > 0:
+            print(" Notice: disabling pyr recycle/save opts (provided values will be ignored)")
+            if opts.recycle_reprimand_objects_from is not None:
+                opts.recycle_reprimand_objects_from = None
+            if opts.save_pyr:
+                opts.save_pyr = False
+    else:
+        print(" Unable to identify macroiteration; will use provided recycle/save pyr opts")
+    
     M_dict = {}
     R_dict = {}
     likelihood_dict = {}
