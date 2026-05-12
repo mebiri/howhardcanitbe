@@ -15,9 +15,12 @@
 #
 feedback = True
 
-if feedback: print("===Initializing CIP===")
+if feedback: 
+    print("===Initializing CIP===")
+    import time
+    t1 = time.perf_counter()
 import RIFT.interpolators.BayesianLeastSquares as BayesianLeastSquares
-if feedback: print(" Imported: BayesianLeastSquares")
+if feedback: print(" Imported: BayesianLeastSquares ({:.6f} s)".format(time.perf_counter()-t1))
 
 import argparse
 import sys
@@ -50,6 +53,7 @@ internal_dtype = np.float32  # only use 32 bit storage! Factor of 2 memory savin
 C_CGS=2.997925*10**10 # Argh, Monica!
  
 try:
+    if feedback: print(" Importing: matplotlib ..."); t1 = time.perf_counter()
     import matplotlib
     matplotlib.use('agg')  # prevent requests for DISPLAY
     import matplotlib.pyplot as plt
@@ -58,18 +62,19 @@ try:
     import corner
 
     no_plots=False
-    if feedback: print(" Imported: matplotlib")
+    if feedback: print(" Imported: matplotlib ({:.6f} s)".format(time.perf_counter()-t1))
 except ImportError:
     print(" - no matplotlib - ") #don't get this output
 
 
 #required imports every time
+if feedback: print(" Importing: igwn_ligolw ..."); t1 = time.perf_counter()
 from igwn_ligolw import lsctables, ligolw #, utils #unused import
 lsctables.use_in(ligolw.LIGOLWContentHandler)
-if feedback: print(" Imported: igwn_ligolw")
+if feedback: print(" Imported: igwn_ligolw ({:.6f} s)\n Importing: mcsampler ...".format(time.perf_counter()-t1)); t1 = time.perf_counter()
 #Ugh, slow: usual 1st output 'import vegas' is in here:
 import RIFT.integrators.mcsampler as mcsampler
-if feedback: print(" Imported: mcsampler")
+if feedback: print(" Imported: mcsampler ({:.6f} s)".format(time.perf_counter()-t1))
 
 #============!!!CONDITIONAL IMPORTS BELOW PARSER ARGUMENTS!!!=================#
 
