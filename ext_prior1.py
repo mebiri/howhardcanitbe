@@ -259,9 +259,10 @@ def initialize_me(**kwargs):
     **kwargs MUST take this form:
     {'input_line':dat_as_array, 'param_names':param_names, 'cip_param_names':coord_names}
     where: 
-        dat_as_array = dat.view((float, len(param_names))) - an array of float values
+        dat_as_array = dat.view((float, len(param_names))) - a 1D array of float values
         param_names = dat.dtype.names - IN THIS ORDER: lnL lnL_err {EOS PARAMS} m1 m2 sigma (sigma same error for both m1 & m2)
         cip_param_names = [str] - given coordinates that CIP is working in, order doesn't matter (hopefully)
+    opt kwarg: 'cip_faster' = bool - whether calling func is CIP_faster's loop, so avoid sys.exit()
     '''
     print("----- INITIALIZING EXTERNAL PRIOR -----")
     if 'input_file_name' in kwargs:
@@ -272,7 +273,6 @@ def initialize_me(**kwargs):
         all_params = np.loadtxt(input_file_name)[input_file_index] 
     elif 'input_line' in kwargs:
         all_params = kwargs['input_line']#used by CIP - single line of data from eos file
-        #print("Given params:",kwargs)
     
     if 'cip_faster' in kwargs:
         global cip_faster_state 
@@ -280,9 +280,9 @@ def initialize_me(**kwargs):
         print(" cip_faster status is:",cip_faster_state)
     
     #----- Initialize unit conversion function -----
-    global cfunc, cv_params
-    rift = False
-    if cfunc == 4: rift = True
+    global cfunc, cv_params, rift
+    #rift = False
+    #if cfunc == 4: rift = True
     cvtest, cv_params = conversion_check(kwargs['cip_param_names'])
     
     if cvtest == 0:
@@ -355,7 +355,8 @@ def initialize_me(**kwargs):
         print("m_max constraint factor for this EOS:",constraint_mmax_factor)
     else:
         print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
-        eos = None #TODO: will cause crash in CIP_faster 
+        eos = None #will cause crash in CIP_faster 
+        if cip_faster_state: return False
     
     #----- Initialize normalization constant -----
     if pop_params is not None:
@@ -381,8 +382,8 @@ def initialize_me(**kwargs):
 
 ####################### EOS RETRIEVAL #######################
 
-#Get the previously-initialized EOS object,
-def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
+#Get the previously-initialized EOS object
+def retrieve_eos(**kwargs): #kwargs aren't needed, but CIP sends them anyway...
     '''
     **kwargs MUST take this form:
     {'input_line':dat_as_array, 'param_names':param_names, 'cip_param_names':coord_names}
@@ -392,7 +393,7 @@ def retrieve_eos(**kwargs): #not sure the kwargs are needed anymore
         cip_param_names = [str] - given coordinates that CIP is working in, order doesn't matter
     '''
     
-    print("Retrieving EOS Object from external initialization.")
+    print("Retrieving EOS object from external initialization.")
     if eos is not None:
         return eos
     else:

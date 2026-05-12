@@ -51,21 +51,6 @@ no_plots = True
 internal_dtype = np.float32  # only use 32 bit storage! Factor of 2 memory savings for GP code in high dimensions
 
 C_CGS=2.997925*10**10 # Argh, Monica!
- 
-try:
-    if feedback: print(" Importing: matplotlib ..."); t1 = time.perf_counter()
-    import matplotlib
-    matplotlib.use('agg')  # prevent requests for DISPLAY
-    import matplotlib.pyplot as plt
-    #from mpl_toolkits.mplot3d import Axes3D #unused import
-    import matplotlib.lines as mlines
-    import corner
-
-    no_plots=False
-    if feedback: print(" Imported: matplotlib ({:.6f} s)".format(time.perf_counter()-t1))
-except ImportError:
-    print(" - no matplotlib - ") #don't get this output
-
 
 #required imports every time
 if feedback: print(" Importing: igwn_ligolw ..."); t1 = time.perf_counter()
@@ -318,6 +303,23 @@ if opts.check_good_enough:
 
 
 #================!!!CONDITIONAL IMPORTS BEGIN HERE!!!=========================#
+
+if not opts.no_plots:
+    try: #this is the slowest import, by a long shot
+        if feedback: print(" Importing: matplotlib ..."); t1 = time.perf_counter()
+        import matplotlib 
+        matplotlib.use('agg')  # prevent requests for DISPLAY
+        import matplotlib.pyplot as plt
+        #from mpl_toolkits.mplot3d import Axes3D #unused import
+        import matplotlib.lines as mlines
+        import corner
+    
+        no_plots=False
+        if feedback: print(" Imported: matplotlib ({:.6f} s)".format(time.perf_counter()-t1))
+    except ImportError:
+        print(" - no matplotlib - ") #don't get this output
+else: 
+    if feedback: print("  NOTICE: matplotlib not imported")
 
 if feedback: print(" -- SAMPLER METHOD:",opts.sampler_method," -- ")
 port_list = []
