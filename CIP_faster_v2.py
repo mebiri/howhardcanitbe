@@ -3859,7 +3859,7 @@ if opts.chunk_save:
     #out_grid = out_grid[indx_ok]
         
     #File (2/7): 
-    np.savetxt(opts.fname_output_integral+"+annotation.dat",hyper_out_array,header=annotation_header) #skip newline char in header
+    np.savetxt(opts.fname_output_integral+"+annotation.dat",hyper_out_array,header=annotation_header[:-1]) #skip newline char in header
     print("Chunk file saved.")
 
 sys.exit(0)
