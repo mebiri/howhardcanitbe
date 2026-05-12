@@ -320,6 +320,12 @@ sampler_check = 0
 if opts.sampler_method == "portfolio":
     port_list = opts.sampler_portfolio
 
+#technically should define all other checks here, except they're never used
+mcsampler_NF_ok=False
+mcsampler_Portfolio_ok=False
+internalGP_ok = False
+gpytorch_ok = False
+
 #portfolio needs: AV, GMM, adaptive_cartesian_gpu, AC, NFlow, mcsamplerPortfolio
 if opts.sampler_method == "GMM" or "GMM" in port_list:
     try:
@@ -351,13 +357,11 @@ if opts.sampler_method == "AV" or "AV" in port_list:
         print(" No mcsamplerAV ") #don't get this output
         mcsampler_AV_ok = False
 #handled later: expensive import
-mcsampler_NF_ok=False
-mcsamplerNFlow = None
+mcsamplerNFlow = None #not really necessary
 if opts.sampler_method == "NFlow" or "NFlow" in port_list:
     sampler_check += 1
     if feedback: print(" Import requested: mcsamplerNFlow - will try later")
 #Needed if sampler_method == portfolio, or if method is not any of the above (or those failed to import)
-mcsampler_Portfolio_ok=False
 if opts.sampler_method == 'portfolio' or sampler_check == 0:
     try:
         import RIFT.integrators.mcsamplerPortfolio as mcsamplerPortfolio #'no cupy (mcsamplerPortfolio)' & 'Portfolio discovery: loading' are in here
@@ -392,7 +396,6 @@ if opts.fit_method == 'gp_sparse':
     except:
         print( " - no internal_GP -  ") #don't get this output
         internalGP_ok = False
-
 if opts.fit_method == 'gp-torch':
     try:
         import RIFT.interpolators.gpytorch_wrapper as gpytorch_wrapper #only used if opts.fit_method == gp-torch
