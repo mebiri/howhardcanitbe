@@ -34,7 +34,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--save-pyr",action='store_true',help="If provided, save the pyr structure files")
 parser.add_argument('--causal-spectral', action='store_true', help="Enable to use new causal spectral parameterization.")
 parser.add_argument("--uniform-c-density-prior",action='store_true')
-parser.add_argument("--chunk-save",default=True,help="Save all output lines to one file instead of 1 file per line.")
+parser.add_argument("--chunk-save",action='store_true',help="Save all output lines to one file instead of 1 file per line.")
 parser.add_argument("--save-all-files",action='store_true',help="If enabled, saves data files (x2) generated for each EOS line")
 #data & constraints
 parser.add_argument('--obs-file', action='append', help="REQUIRED: Filenames (NOT PATHS) for observations used for likelihood calculation and plots generated here.")#Supported: j0740 j1731 j0030 j0437")
@@ -225,7 +225,7 @@ def make_EOS_TOV_from_EOSManager(eos, causal = True, make_monotonic_causal = Tru
     if TOV :
         reprimand_eos=None
         try:
-            reprimand_eos = EOSManager.EOSReprimand(param_dict=param_dict)
+            reprimand_eos = EOSManager.EOSReprimand(param_dict=param_dict) #this doesn't work: pyr.tov_acc_simple() doesn't exist (EOS Manager, line 870)
         except Exception as e:
             print("ERROR:",e)
             raise Exception("Could not retreive Reprimand EOS from EOS Manager")
@@ -318,8 +318,9 @@ def likelihood_evaluation():
                 continue
         else:
             try:
-                print(eoss[i][2:6])
+                print("Creating EOS for params:",eoss[i][2:6])
                 reprimand_eos, param_dict = make_EOS_TOV_from_EOSManager(eoss[i][2:6], causal = opts.causal_spectral, TOV = True)
+                print("Successfully created EOS TOV for eos line",i)
             except Exception as e:
                 eoss[i,0] = -1e6 # arbitrary low likelihood value for unphysical EoSs
                 eoss[i,1] = 10
@@ -359,9 +360,16 @@ def likelihood_evaluation():
         
         central_gm1 = tov_seq_reprimand.center_gm1_from_grav_mass(M_dict[i])
         eos_results = {'M':M_dict[i], 'R':R_dict[i], 'gm1':central_gm1}
+        print("eos_results:")
+        print("M:")
+        print(M_dict[i][:10])
+        print("R:")
+        print(R_dict[i][:10])
+        print("gm1:")
+        print(central_gm1[:10])
         
         #from likelihood_calculator import mMax_likelihood_for_EOS
-        from likelihood_calculator import likelihood_for_MR
+        from likelihood_calculator_nicer import likelihood_for_MR
         
         likelihood_dict[i] = 1
         #from likelihood_calculator import likelihood_MR_for_eos
@@ -371,7 +379,7 @@ def likelihood_evaluation():
         if opts.uniform_c_density_prior :
             for rv in dat_rv: likelihood_dict[i] *= likelihood_for_MR(eos_results, rv, uniform_in = 'Log_central_density', reprimand_object = tov_seq_reprimand, eos_object = reprimand_eos.pyr_eos)
         else:
-            for rv in dat_rv: likelihood_dict[i] *= likelihood_for_MR(eos_results, rv, uniform_in = 'M_fixed_grid', reprimand_object = tov_seq_reprimand)
+            for rv in dat_rv: likelihood_dict[i] *= likelihood_for_MR(eos_results, rv, uniform_in = 'M_fixed_grid', reprimand_object = tov_seq_reprimand)#used to be uniform_in = 'M_fixed_grid'
         
         #mmax constraint (duplicate w/ ext_prior):
         #this includes GW170817 if gw170817 in opts.observations
