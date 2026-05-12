@@ -244,14 +244,17 @@ cv_params = None
 eos = None
 constraint_mmax_factor = 0.0
 cip_faster_state = False
+rift = False
 
 #Try to import lalsimutils (will fail on local machines)
 try:
     import RIFT.lalsimutils as lalsimutils
     cfunc = 4#can call lalsimutils.convert_waveform_coordinates 
+    rift = True
 except:
     print("WARNING: Unable to import RIFT or RIFT.lalsimutils.")
     cfunc = 1
+print(" Initializing external prior: RIFT status is:",rift,"(mode",cfunc,")")
 
 
 def initialize_me(**kwargs):
