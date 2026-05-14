@@ -2452,7 +2452,6 @@ elif opts.prior_in_integrand_correction == 'volumetric_over_uniform':
 my_eos=None
 #option to be used if gridded values not calculated assuming EOS
 fake_eos = False
-args_init = None
 make_CIP_eos = False
 eos_dat = None
 eos_name = None
@@ -2617,49 +2616,58 @@ for i in np.arange(n_eos_pts):
         # Initialize external prior code & retrieve EOS from it (if applicable)
         args_init = {'input_line':eos_dat_line, 'param_names':eos_param_names, 'cip_param_names':coord_names, 'cip_faster':True}  # pass the recordarray broken into parts, for convenience
         failstate = supplemental_init(**args_init)
-        #TODO: alt, instead of forcing a return val: make callable func in ext code, like retrieve_eos(), to fetch a fail check var set there
-        if not (failstate): #failstate = True means success
+        #TODO: instead of forcing a return val: make func in ext code, like retrieve_eos(), & call to fetch a fail-state global variable there; e.g., ext_lh_module.check_fail() returns True/False
+        if not (failstate): #failstate = True means success!
             print("ERROR: Could not initialize this EOS line.")
+            #TODO: could append low-lnL val for unphysical EOS here (cf. NICER code)
+            #eos_dat_line[0] = opts.unphysical_eos_val
+            #eos_dat_line[1] = 1.
+            #hyper_out_list.append(eos_dat_line)
             continue
         
         if not (fake_eos): #if fake_eos is false, supplemental_eos will be True (not None)
             my_eos = supplemental_eos(**args_init) #THIS CANNOT RETURN NONE, ELSE WILL CRASH
     elif make_CIP_eos:
-        #import RIFT.physics.EOSManager as EOSManager #TODO: test this
+        #import RIFT.physics.EOSManager as EOSManager #imported earlier, hopefully
         if opts.verbose:
             print(" Using EOS ", eos_name, opts.using_eos_index, opts.eos_param, opts.eos_param_values)
             
         spec_param_array = eos_dat_line[2:]  # drop first two as lnL, sigma_lnL
-        if opts.eos_param == 'spectral':
-            spec_params ={}
-            spec_params['gamma1']=spec_param_array[0]
-            spec_params['gamma2']=spec_param_array[1]
-            if len(spec_param_array) <3:
+        try:
+            if opts.eos_param == 'spectral':
+                spec_params ={}
+                spec_params['gamma1']=spec_param_array[0]
+                spec_params['gamma2']=spec_param_array[1]
+                if len(spec_param_array) <3:
+                    spec_params['gamma3']=spec_params['gamma4']=0
+                else:
+                    spec_params['gamma3']=spec_param_array[2]
+                    spec_params['gamma4']=spec_param_array[3]
+                eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
+                my_eos=eos_base
+            elif opts.eos_param == 'cs_spectral' and len(spec_param_array >=4):
+                spec_params ={}
+                spec_params['gamma1']=spec_param_array[0]
+                spec_params['gamma2']=spec_param_array[1]
                 spec_params['gamma3']=spec_params['gamma4']=0
-            else:
                 spec_params['gamma3']=spec_param_array[2]
                 spec_params['gamma4']=spec_param_array[3]
-            eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
-            my_eos=eos_base
-        elif opts.eos_param == 'cs_spectral' and len(spec_param_array >=4):
-            spec_params ={}
-            spec_params['gamma1']=spec_param_array[0]
-            spec_params['gamma2']=spec_param_array[1]
-            spec_params['gamma3']=spec_params['gamma4']=0
-            spec_params['gamma3']=spec_param_array[2]
-            spec_params['gamma4']=spec_param_array[3]
-            eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
-            my_eos = eos_base
-        elif opts.eos_param == 'PP' and len(spec_param_array >=4):
-            spec_params ={}
-            spec_params['logP1'] = spec_param_array[0]
-            spec_params['gamma1'] = spec_param_array[1]
-            spec_params['gamma2'] = spec_param_array[2]
-            spec_params['gamma3'] = spec_param_array[3]
-            eos_base = EOSManager.EOSPiecewisePolytrope(name=eos_name,params_dict=spec_params)
-            my_eos = eos_base
-        else:
-            raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,opts.eos_param))
+                eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=not opts.no_use_lal_eos)
+                my_eos = eos_base
+            elif opts.eos_param == 'PP' and len(spec_param_array >=4):
+                spec_params ={}
+                spec_params['logP1'] = spec_param_array[0]
+                spec_params['gamma1'] = spec_param_array[1]
+                spec_params['gamma2'] = spec_param_array[2]
+                spec_params['gamma3'] = spec_param_array[3]
+                eos_base = EOSManager.EOSPiecewisePolytrope(name=eos_name,params_dict=spec_params)
+                my_eos = eos_base
+            else:
+                raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,opts.eos_param))
+        except Exception as e:
+            print("  ERROR: EOS CREATION FAILED:",e)
+            #TODO: could append low-lnL val for unphysical EOS (same file format as w/ suppl prior code)
+            continue
 
 
     # Sampler-------------------------------
@@ -3838,6 +3846,11 @@ if not (opts.chunk_save):
 ###
 ### Post-loop saving (for hyperpipe only) - #TODO: could port to save_CIP_output.py, for consistency
 ###
+
+#if all EOS lines failed, will be nothing to save #TODO: save low-lnL val file? (NICER code does this)
+if len(hyper_out_list) == 0:
+    print(" WARNING: no data to save! Will not produce an output file for these lines.")
+    sys.exit(0)
 
 #reset opts.fname_output_integral
 opts.fname_output_integral = fname_output_integral_orig
