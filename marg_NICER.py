@@ -57,7 +57,7 @@ parser.add_argument('--n-events-to-analyze',type=int, default=1,help="REQUIRED: 
 #output management
 parser.add_argument("--conforming-output-name",action='store_true',help="Needed for hyperpipe")
 parser.add_argument('--plot', action='store_true', help="Enable to plot resultant M-R and Gaussians. Only for n_events = 1")
-parser.add_argument('--outdir', default=".", type=str, help="[Ignored] Output eos file directory.")
+parser.add_argument('--outdir', default=".", type=str, help="Output eos file directory for non-cluster runs.")
 parser.add_argument('--outdir-clean', type=str, help="[Ignored] Delete CleaOutile direc before starting the runtory.")
 
 #legacy args
@@ -261,7 +261,6 @@ def likelihood_evaluation():
             dat_cov.append(cov)
             dat_list.append(dat_here)
         
-        
     #if 'j0030' in observations:
     #    from likelihood_calculator import gaussian_distribution
     #    data_j0030 = np.loadtxt(observation_base_dir + 'J0030/J0030_2spot_RM.txt', skiprows=6)#400,000 lines
@@ -289,13 +288,13 @@ def likelihood_evaluation():
     param_names = list(eos_dat.dtype.names)
     eoss = eos_dat.view((float, len(param_names)))
     print("EOS dat size: (",len(eoss),len(eoss[0]),")")
-    dat_orig_names = param_names[2:] #ignore lnL, sig_lnL - probably don't need this
+    dat_orig_names = param_names[2:] #ignore lnL, sig_lnL - unused anywhere else
     print("Original field names ", dat_orig_names)
     
-    #detect macroiteration
+    #detect macroiteration, to allow saving/loading 1st iteration pyr files (faster)
     eos_file = fname.split("/")[-1]
-    if eos_file.startswith("grid-"): #avoid puff grids
-        macroit = int(eos_file.split(".")[0][-1]) #gets X in grid-X.dat == macroiteration
+    if eos_file.startswith("grid"):
+        macroit = int(eos_file.split(".")[0].split("-")[-1]) #gets X in grid-X.dat == macroiteration
         print(" macroiteration detected:",macroit)
         if macroit > 0:
             print(" Notice: disabling pyr recycle/save opts (provided values will be ignored)")
@@ -311,10 +310,10 @@ def likelihood_evaluation():
     likelihood_dict = {}
     #for i in np.concatenate((np.arange(0,18),np.arange(19,21),np.arange(22,27),np.arange(28,88),np.arange(89,186))):
     for i in np.arange(len(eoss)):   
-        #make EOS object via reprimand & EOSManager:
+        #make/load EOS object via reprimand & EOSManager:
         if opts.recycle_reprimand_objects_from is not None:
             try:
-                print(eoss[i][2:6])
+                print("Creating EOS for params:",eoss[i][2:6])
                 param_dict = make_EOS_TOV_from_EOSManager(eoss[i][2:6], causal = opts.causal_spectral, TOV = False)
                 import lal
                 tov_seq_reprimand = pyr.load_star_branch(opts.recycle_reprimand_objects_from+"/reprimand.tov.seq_"+str(i)+".h5", pyr.units.geom_solar(msun_si=lal.MSUN_SI))
@@ -324,7 +323,8 @@ def likelihood_evaluation():
                 _pyr_mrL_dat = np.zeros((len(gm1),2))
                 
                 _pyr_mrL_dat[:,0] = tov_seq_reprimand.grav_mass_from_center_gm1(gm1) # Mg [Mo]
-                _pyr_mrL_dat[:,1] = tov_seq_reprimand.circ_radius_from_center_gm1(gm1)*u.length/1e3 #radius [km]                
+                _pyr_mrL_dat[:,1] = tov_seq_reprimand.circ_radius_from_center_gm1(gm1)*u.length/1e3 #radius [km]  
+                print("Successfully imported EOS TOV for eos line",i)
             except Exception as e:
                 eoss[i,0] = -1e6 # arbitrary low likelihood value for unphysical EoSs - will impact entire hyperpipe line
                 eoss[i,1] = 10
@@ -357,10 +357,11 @@ def likelihood_evaluation():
         
         #save reprimand objects, if desired
         if opts.save_pyr and not opts.recycle_reprimand_objects_from:
-            if opts.fname is None:
+            if opts.fname is None: #local runs
                 pyr.save_star_branch(opts.outdir+"/"+"reprimand.tov.seq_"+str(i)+".h5", tov_seq_reprimand)
-            else:
+            else: #hyperpipe runs
                 pyr.save_star_branch(opts.fname_output_integral+"_reprimand.tov.seq_"+str(i)+".h5", tov_seq_reprimand)
+            #print("Saved pyr object")
         
         #save data
         #if opts.fname is not None: #always the case on the cluster...
@@ -371,17 +372,10 @@ def likelihood_evaluation():
         
         M_dict[i] = _pyr_mrL_dat[:,0]
         R_dict[i] = _pyr_mrL_dat[:,1]
-        
         central_gm1 = tov_seq_reprimand.center_gm1_from_grav_mass(M_dict[i])
         eos_results = {'M':M_dict[i], 'R':R_dict[i], 'gm1':central_gm1}
-        print("eos_results:")
-        print("M:")
-        print(M_dict[i][:10])
-        print("R:")
-        print(R_dict[i][:10])
-        print("gm1:")
-        print(central_gm1[:10])
-        
+
+        #-----------LIKELIHOOD CALCULATION--------------
         #from likelihood_calculator import mMax_likelihood_for_EOS
         from likelihood_calculator_nicer import likelihood_for_MR
         
@@ -389,14 +383,12 @@ def likelihood_evaluation():
         #from likelihood_calculator import likelihood_MR_for_eos
         #from likelihood_calculator import likelihood_symmetry_energy
         #for rv in external_ns_MR_rv: likelihood_dict[i] *= likelihood_MR_for_eos(eos_results, rv, reprimand_object = tov_seq_reprimand)
-        #import pdb; pdb.set_trace()
         if opts.uniform_c_density_prior :
             for rv in dat_rv: likelihood_dict[i] *= likelihood_for_MR(eos_results, rv, uniform_in = 'Log_central_density', reprimand_object = tov_seq_reprimand, eos_object = reprimand_eos.pyr_eos)
         else:
             for rv in dat_rv: likelihood_dict[i] *= likelihood_for_MR(eos_results, rv, uniform_in = 'M_fixed_grid', reprimand_object = tov_seq_reprimand)#used to be uniform_in = 'M_fixed_grid'
         
         #mmax constraint (duplicate w/ ext_prior):
-        #this includes GW170817 if gw170817 in opts.observations
         if opts.do_max_mass:
             print('Mmax', max(M_dict[i]))
             likelihood_dict[i] *= mMax_likelihood_for_EOS(max(M_dict[i]))
@@ -429,12 +421,12 @@ def likelihood_evaluation():
         # remove invalid lines
         indx_ok = np.ones(len(eoss),dtype=bool)
         indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(eoss[:,0]))) #check nans (shouldn't happen)
-        indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isinf(eoss[:,0]))) #check +/-inf (can happen)
+        indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isinf(eoss[:,0]))) #check +/-inf (shouldn't happen)
         print('   Ignoring lines with lnL = -inf : {} '.format(len(eoss)-np.sum(indx_ok)))
         eoss = eoss[indx_ok]
-        
-        var = eoss[:,1]/eoss[:,0] #mimics sqrt(line[1]**2)/res behavior for single line
-        eoss[:,1] = var
+        #np.sqrt(var)/res
+        #var = eoss[:,1]/eoss[:,0] #mimics sqrt(line[1]**2)/res behavior for single line
+        #eoss[:,1] = var
         
         #File (2/7): MARG-0-0+annotation.dat
         lineheader = ' '.join(map(str,param_names))
@@ -493,31 +485,5 @@ def likelihood_evaluation():
 
 if __name__ == '__main__':
     likelihood_evaluation()
-
-
-
-'''
-def diagnosing():
-    #diagnosing RePrimAnd failure for H2 eos
-    from RIFT.physics import EOSManager as EOSManager
-    h2_by_name = EOSManager.EOSLALSimulation('H2')
-    
-    
-    #eoss = np.genfromtxt('../RIFT_improvedPBCS_indices_physical_EOS_causal.txt', dtype='str')
-    qry = EOSManager.QueryLS_EOS(h2_by_name.eos)
-    min_pseudo_enthalpy = 0.005
-    max_pseudo_enthalpy = lalsim.SimNeutronStarEOSMaxPseudoEnthalpy(h2_by_name.eos)
-    hvals = max_pseudo_enthalpy* 10**np.linspace( np.log10(min_pseudo_enthalpy/max_pseudo_enthalpy),  0,num=500)
-    edens = qry.extract_param('energy_density',hvals)
-    press = qry.extract_param('pressure',hvals)
-    p_enthalpy = qry.extract_param('pseudo_enthalpy',hvals)
-    rho = qry.extract_param('rest_mass_density',hvals)
-    cs = qry.extract_param('sound_speed_over_c',hvals)
-    
-    param_dict = {'pseudo_enthalpy': p_enthalpy,'rest_mass_density': rho,'energy_density': edens,'pressure': press,'sound_speed_over_c': cs}
-    param_dict = EOSManager.eos_monotonic_parts_and_causal_sound_speed(param_dict)
-    p_enthalpy = param_dict['pseudo_enthalpy']; rho = param_dict['rest_mass_density']; edens = param_dict['energy_density']; press = param_dict['pressure']; cs = param_dict['sound_speed_over_c']
-    reprimand_eos = EOSManager.EOSReprimand(param_dict=param_dict)
-'''
 
 
