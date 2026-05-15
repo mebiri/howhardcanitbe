@@ -311,12 +311,17 @@ def likelihood_evaluation():
     #for i in np.concatenate((np.arange(0,18),np.arange(19,21),np.arange(22,27),np.arange(28,88),np.arange(89,186))):
     for i in np.arange(len(eoss)):   
         #make/load EOS object via reprimand & EOSManager:
+        print("Creating EOS for params:",eoss[i][2:6])
         if opts.recycle_reprimand_objects_from is not None:
             try:
-                print("Creating EOS for params:",eoss[i][2:6])
                 param_dict = make_EOS_TOV_from_EOSManager(eoss[i][2:6], causal = opts.causal_spectral, TOV = False)
                 import lal
-                tov_seq_reprimand = pyr.load_star_branch(opts.recycle_reprimand_objects_from+"/reprimand.tov.seq_"+str(i)+".h5", pyr.units.geom_solar(msun_si=lal.MSUN_SI))
+                if opts.fname is None: #local runs
+                    loadname = opts.recycle_reprimand_objects_from+"/"+"reprimand.tov.seq_"+str(i)+".h5"
+                else: #hyperpipe
+                    loadname = opts.recycle_reprimand_objects_from+"_reprimand.tov.seq_"+str(i)+".h5"
+                print("Importing TOV Sequence from: "+loadname)
+                tov_seq_reprimand = pyr.load_star_branch(loadname, pyr.units.geom_solar(msun_si=lal.MSUN_SI))
                 u = tov_seq_reprimand.units_to_SI
                 rggm1 = tov_seq_reprimand.range_center_gm1
                 gm1 = np.linspace(rggm1.min, rggm1.max, 800)
@@ -332,7 +337,6 @@ def likelihood_evaluation():
                 continue
         else:
             try:
-                print("Creating EOS for params:",eoss[i][2:6])
                 reprimand_eos, param_dict = make_EOS_TOV_from_EOSManager(eoss[i][2:6], causal = opts.causal_spectral, TOV = True)
                 print("Successfully created EOS TOV for eos line",i)
             except Exception as e:
