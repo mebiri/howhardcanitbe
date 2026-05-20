@@ -71,7 +71,8 @@ def obs_and_MR():
     dM = 0.001
     Mmax = 2.1
     Mmin = 0.4
-    M = np.arange(Mmin,Mmax,dM)  # range of masses
+    #M = np.arange(Mmin,Mmax,dM)  # range of masses
+    M = np.random.uniform(Mmin,Mmax,1000)
     if opts.eos_max_m is not None:
         M = M[np.where(M <= opts.eos_max_m)]
     #radius grid
@@ -79,7 +80,8 @@ def obs_and_MR():
     Rmax = 25
     Rmin = 8
     dR = (Rmax-Rmin)/len(M)
-    R = np.arange(8,25,dR)
+    #R = np.arange(8,25,dR)
+    R = np.random.uniform(Rmin,Rmax,len(M))
     print("len M:",len(M),"; len R:",len(R))
     assert len(M) == len(R)
     scale_factor = (Mmax-Mmin)/(max(M)-min(M))
@@ -130,6 +132,9 @@ def obs_and_MR():
     #fig,(ax1,ax2) = plt.subplots(2,1)
     
     fig = plt.figure(); ax = fig.add_subplot(111)
+    
+    ax.scatter(R,M,c=likelihood_array,marker=".")
+
     from plotting import plot_data_and_gaussian
     for j in np.arange(len(dat_rv)):
         plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax)
@@ -138,12 +143,14 @@ def obs_and_MR():
     #for i in likelihood_dict: likelihood_array = np.append(likelihood_array, likelihood_dict[i])
     
     lmax = max(likelihood_array)
+    lmax_loc = likelihood_array.index(lmax)
     lmin = min(likelihood_array)
+    print("Max likelihood:",lmax,"at (R, M) = (",R[lmax_loc],M[lmax_loc],")")
     
     #for i in likelihood_dict:
         #MRcolor = plt.cm.gist_rainbow((likelihood_dict[i]-lmin)/(lmax-lmin))
-    ratio = (likelihood_array[:]-lmin)/(lmax-lmin)
-    ax.scatter(R,M,c=likelihood_array,marker=".")
+    #ratio = (likelihood_array[:]-lmin)/(lmax-lmin)
+    #ax.scatter(R,M,c=likelihood_array,marker=".")
     #ax.scatter(R,M, alpha = ratio, color = 'b')
     
     #ax.set_xlim(7,20)
