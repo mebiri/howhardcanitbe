@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #! /usr/bin/env python
 """
 Created on Tue May 19 01:38:17 2026
@@ -15,6 +14,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--using-eos', type=str, action='append',help="REQUIRED: Send eos file with [lnL, sigma_lnL, gamma0, gamma1, gamma2, gamma3, m1, m2, sig] as the parameters.")
 parser.add_argument('--save-consolidation-table',action='store_true',help="Must include --sum-marg to use this")
 parser.add_argument('--sum-marg',action='store_true')
+parser.add_argument('--input-grid',type=str,help="Grid file for iteration (EOS NEEDS TO MATCH) - helpful, more reliable, but not required")
 
 opts = parser.parse_args()
 
@@ -24,7 +24,7 @@ eos_names = ["lnL", "gamma0", "gamma1", "gamma2", "gamma3", "m1", "m2"]
 eos_indices = None
 
 for e in opts.using_eos:
-    fname = opts.using_eos.replace('file:', '')
+    fname = e.replace('file:', '')
     
     filename=fname.split("/")[-1].split(".")[0]
     print("\nInspecting filename: "+filename)
@@ -51,12 +51,10 @@ for e in opts.using_eos:
             param_names = dat.dtype.names #separate out the names from the data
             dat_as_array = dat.view((float, len(param_names)))
             eos_indices = [param_names.index(n) for n in eos_names] 
-            dat_to_save = dat_as_array[:,eos_indices]
-            eos_data[filename] = dat_to_save
+            eos_data[filename] = dat_as_array[:,eos_indices]
             lnL_dat = dat_as_array[:,0]
         else:
             dat = np.genfromtxt(fname)[:,eos_indices]
-            dat_to_save = dat_as_array
             eos_data[filename] = dat
             lnL_dat = dat[:,0] 
     else:
@@ -122,8 +120,8 @@ for e in opts.using_eos:
                     #mass good, EOS good, mmax good: 0 PLE + 0 CIP + 0 NICER >= 0
                     #mass good, EOS good, mmax good, other NICER = -1
          
-            indx_ok = np.ones(dat_len,dtype=bool)
-            indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(lnL_dat[:,0])))
+            #indx_ok = np.ones(dat_len,dtype=bool)
+            #indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(lnL_dat[:,0])))
     
             if lnL <= -10e6:
                 #mass fail, EOS good, mmax bad:  -2 PLE + -2.5 CIP + -6 NICER = -10.5
@@ -143,16 +141,74 @@ for e in opts.using_eos:
         
         
         print("Results for file "+fname.split("/")[-1]+":")
-        print(" Good lines:",good_lines,"   ",(good_lines/dat_len)*100.,"%")
         print(" Mass-only fails (-4.5):  ",mf_eg_mg,"  ",(mf_eg_mg/dat_len)*100.,"%")
         print(" Mass, mmax fails (-10.5):",mf_eg_mb,"  ",(mf_eg_mb/dat_len)*100.,"%")
         print(" Mass, eos fails (-8.5):  ",mf_ef,"  ",(mf_ef/dat_len)*100.,"%")
         print(" eos-only fails (-5.5):   ",mg_ef,"  ",(mg_ef/dat_len)*100.,"%")
         print(" Mmax-only fails (-6):    ",mg_eg_mb,"  ",(mg_eg_mb/dat_len)*100.,"%")
         print(" Other fails (-1):        ",other_fails,"  ",(other_fails/dat_len)*100.,"%")
+        print(" Good lines:",good_lines,"   ",(good_lines/dat_len)*100.,"%")
 
+if opts.sum_marg:
+    initial_dat = None
+    initial_dat_len = 0
+    longest_file = ""
+    if opts.input_grid:
+        initial_dat = np.genfromtxt(opts.input_grid)[:,eos_indices] #these better match
+        initial_dat_len = len(initial_dat)
+        print("Length of initial grid file:",initial_dat_len)
+    else:
+        for eos in eos_data: #find max available file length
+            length = len(eos_data[eos])
+            if length > initial_dat_len: 
+                initial_dat_len = length
+                longest_file = eos
+        print("No initial grid; found highest file length:",longest_file,initial_dat_len) #should be PLE length
+        initial_dat = eos_data[longest_file]
+    
+    #table cols: indx CON_lnL sum_lnL PLE_lnL CIP_lnL NCR_lnL eos_indices
+    final_table = np.zeros((initial_dat_len,len(eos_indices[1:])+6))
+    final_table[:,6:] = np.around(initial_dat[:,1:], decimals=7)
+    final_table[:,0] = np.arange(initial_dat_len)
+    for eos in eos_data:
+        print("Tabulating eos data for:",eos)
+        marg_col = -1
+        if len(eos) == 14: 
+            print("Recognized consolidated_X.net_marg file for iteration.")
+            marg_col = 1
+        elif len(eos) == 16:
+            print("Recognized consolidated_X_Y.net_marg file for MARG process.")
+            marg_col = 3+int(eos[-1]) #either 0, 1, or 2
+        else:
+            print("ERROR: could not recognize consolidated file. Exiting.")
+            import sys
+            sys.exit(0)
+            
+        if eos == longest_file:
+            final_table[:,marg_col] = eos_data[eos][:,0]
+            continue
+        
+        eos_line = 0
+        for i in np.arange(initial_dat_len):
+            line = np.around(eos_data[eos][eos_line], decimals=7)
+            if line[1:] == final_table[i,6:]:
+                final_table[i,marg_col] = line[0]
+                eos_line += 1
+            else:
+                final_table[i,marg_col] = 0.0
+        
+        if eos_line == len(eos_data[eos]): #equal b/c last good iteration sets eos_line+1
+            print("All lines for this eos file matched.")
+        else:
+            print("Not all lines for this eos data were matched; expect problems.")
+            
+    final_table[:,2] = np.sum(final_table[:,3:6],axis=1)
+    header = "idx lnL_CON lnL_sum lnL_PLE lnL_CIP lnL_NCR "+" ".join(eos_names[1:])
+    np.savetxt("lnL_consolidation_table.dat",final_table,header=header)
+    print("Consolidation table saved.")
+    
 #want to save totals file:
-#Total  PLE_lnL CIP_lnL NCR_lnL gamma0 gamma1 gamma2 gamma3 m1 m2
-#-10.5  -2      -2.5    -6      .63 -.2 0.2 -.009 1.2 1.4
+#indx CON_lnL Total  PLE_lnL CIP_lnL NCR_lnL gamma0 gamma1 gamma2 gamma3 m1 m2
+#0    -10.5   -10.5  -2      -2.5    -6      .63 -.2 0.2 -.009 1.2 1.4
 
 
