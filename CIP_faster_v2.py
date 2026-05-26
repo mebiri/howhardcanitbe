@@ -2617,12 +2617,18 @@ for i in np.arange(n_eos_pts):
         args_init = {'input_line':eos_dat_line, 'param_names':eos_param_names, 'cip_param_names':coord_names, 'cip_faster':True}  # pass the recordarray broken into parts, for convenience
         failstate = supplemental_init(**args_init)
         #TODO: instead of forcing a return val: make func in ext code, like retrieve_eos(), & call to fetch a fail-state global variable there; e.g., ext_lh_module.check_fail() returns True/False
-        if not (failstate): #failstate = True means success!
-            print("ERROR: Could not initialize this EOS line.")
-            #TODO: could append low-lnL val for unphysical EOS here (cf. NICER code)
-            #eos_dat_line[0] = opts.unphysical_eos_val
-            #eos_dat_line[1] = 1.
-            #hyper_out_list.append(eos_dat_line)
+        #unphysical_eos_val = supplemental_failstate() - check this func exists, first; if it doesn't, CIP will have to crash
+        #if opts.save_unphysical_eos: eos_dat_line[0] = unphysical_eos_val
+        if failstate: #failstate = None means success!
+            print("ERROR: Could not initialize this EOS line; errorcode =",failstate)
+            try:
+                eos_dat_line[0] = np.float64(failstate)
+                print("Saving failstate as lnL for this eos line.")
+            except:
+                print("Cannot use provided failstate as output; saving default unphysical lnL.")
+                eos_dat_line[0] = -1e6
+            eos_dat_line[1] = 1.
+            hyper_out_list.append(eos_dat_line)
             continue
         
         if not (fake_eos): #if fake_eos is false, supplemental_eos will be True (not None)
@@ -3870,7 +3876,14 @@ if opts.chunk_save:
     #indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(out_grid[:,0]))) #check nans (shouldn't happen)
     #print('   Ignoring lines with lnL = -inf : {} '.format(len(out_grid)-np.sum(indx_ok)))
     #out_grid = out_grid[indx_ok]
-        
+    try:
+        tester = annotation_header
+    except:
+        fname = opts.using_eos.replace('file:','')
+        linefirst =''
+        with open(fname) as f:
+            linefirst = f.readline()
+        annotation_header = linefirst[2:]
     #File (2/7): 
     np.savetxt(opts.fname_output_integral+"+annotation.dat",hyper_out_array,header=annotation_header[:-1]) #skip newline char in header
     print("Chunk file saved.")

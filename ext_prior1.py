@@ -353,13 +353,19 @@ def initialize_me(**kwargs):
     if len(eos_names) > 0 and (rift):
         eos = generate_eos(eos_dat, eos_names)
         if eos is None and cip_faster_state:
-            return False
+            return -1.5e6
+        #TODO: check eos.mMaxMsun, kill if < 1.8 (cf. NICER code)
+        m_max = eos.mMaxMsun
+        if m_max < 1.8:
+            print("WARNING: max M < 1.8 for this line: skipping.")
+            if cip_faster_state: return -6.5e6
+            else: sys.exit(0)
         constraint_mmax_factor = mmax_constraint(eos.mMaxMsun) 
         print("m_max constraint factor for this EOS:",constraint_mmax_factor)
     else:
         print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
         eos = None #will cause crash in CIP_faster 
-        if cip_faster_state: return False
+        if cip_faster_state: return -1e6
     
     #----- Initialize normalization constant -----
     if pop_params is not None:
@@ -372,7 +378,7 @@ def initialize_me(**kwargs):
                 mbounds = [3,30] #Black hole mass range
             nm = boundary_integration_checks(pop_params,mbounds)#only supports [m1 m2 sig]
             if nm == -1 and cip_faster_state:
-                return False
+                return -2.5e6
         else:
             print("WARNING: unable to check population boundaries. Assuming normalized population.")
     #else: nm is set to 1 by default (i.e., entire normal curve is within domain)
@@ -380,7 +386,7 @@ def initialize_me(**kwargs):
     
     print("----- END EXTERNAL PRIOR INITIALIZATION -----")
     if cip_faster_state:
-        return True #now required by CIP_faster interface
+        return None #now required by CIP_faster interface
 
 
 ####################### EOS RETRIEVAL #######################

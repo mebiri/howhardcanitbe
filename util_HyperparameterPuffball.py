@@ -5,11 +5,11 @@ import sys
 import numpy as np
 import numpy.lib.recfunctions
 import scipy
-import RIFT.lalsimutils as lalsimutils
-import lalsimulation as lalsim
-import lal
-import functools
-import itertools
+#import RIFT.lalsimutils as lalsimutils
+#import lalsimulation as lalsim
+#import lal
+#import functools
+#import itertools
 
 
 parser = argparse.ArgumentParser()
@@ -25,7 +25,8 @@ parser.add_argument("--random-parameter-range", action='append', type=str,help="
 parser.add_argument("--downselect-parameter",action='append', help='Name of parameter to be used to eliminate grid points ')
 parser.add_argument("--downselect-parameter-range",action='append',type=str)
 parser.add_argument("--regularize",action='store_true',help="Add some ad-hoc terms based on priors, to help with nearly-singular matricies")
-parser.add_argument("--downselect-rotated-coords",action='store_true',help="Apply rotated coord sys to spectral EOS params; from Wysocki 2020 https://arxiv.org/pdf/2001.01747")
+parser.add_argument("--downselect-rotated-spectral-coords",action='store_true',help="Apply rotated coord sys to spectral EOS params; from Wysocki 2020 https://arxiv.org/pdf/2001.01747")
+parser.add_argument("--downselect-mass-range",action='store_true',help="Reject points where m2 > m1 for population models (slightly hacky; prefer diff coord sys)")
 opts=  parser.parse_args()
 
 if opts.random_parameter is None:
@@ -119,8 +120,13 @@ else:
     delta_X =np.random.normal(size=len(coord_names), scale=sigma)
     X_out = X+delta_X
 
-if opts.downselect_rotated_coords:
-    #Apply rotation to spectral EOS params from Wysocki et. al 2020 https://arxiv.org/pdf/2001.01747
+# Downselect
+names_downselect = list(downselect_dict.keys())
+indx_ok = np.ones(len(X_out),dtype=bool)
+
+#Apply rotation to spectral EOS params from Wysocki et. al 2020 https://arxiv.org/pdf/2001.01747
+if opts.downselect_rotated_spectral_coords:
+    print(" Applying rotated coordinate transformation to spectral parameters")
     dan_rot = [[0.43801, -0.53573, 0.52661, -0.49379],
                [-0.76705, 0.17169, 0.31255, -0.53336],
                [0.45143, 0.67967, -0.19454, -0.54443],
@@ -128,19 +134,44 @@ if opts.downselect_rotated_coords:
     scaled_mean = [0.89421, 0.33878, -0.07894, 0.00393]
     scaled_sig = [0.35700, 0.25769, 0.05452, 0.00312]
     
-    downselect_dict["gamma0"] = []
+    #get gammas' indices in X_out(= X) from coord names
+    r_tilde = np.zeros((len(X_out),4))
+    for i in np.arange(4):
+        #do one coord at a time
+        indx = coord_names.index("gamma"+str(i))
+
+        #convert gammas to r_tilde using equation: r_tilde = (gamma - u)/sig
+        r_tilde[:,i] = (X_out[:,indx] - scaled_mean[i])/scaled_sig[i]
+
+    #apply transform: r_prime = S*r_tilde ( [4 x 4].([N x 4].T) )
+    r_prime = np.matmul(dan_rot,r_tilde.T)
+    r_prime = r_prime.T 
     
-    
-    
-# Downselect
-names_downselect = list(downselect_dict.keys())
+    # downselect 
+    downselect_rot = {}
+    downselect_rot["r0"] = [-4.37722, 4.91227]
+    downselect_rot["r1"] = [-1.82240, 2.06387]
+    downselect_rot["r2"] = [-0.32445, 0.36469]
+    downselect_rot["r3"] = [-0.09529, 0.11426]
+    for indx, name in enumerate(downselect_rot.keys()):
+        indx_ok = np.logical_and(indx_ok,  r_prime[:,indx]<= downselect_rot[name][1] )
+        indx_ok = np.logical_and(indx_ok,  r_prime[:,indx]>= downselect_rot[name][0] )
+        print('   Increment downselect : {} {} '.format(name, np.sum(indx_ok) ))
+
 # no conversion needed
-indx_ok = np.ones(len(X_out),dtype=bool)
 for indx, name in enumerate(names_downselect):
     indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(X_out[:,indx])))
     indx_ok = np.logical_and(indx_ok,  X_out[:,indx]<= downselect_dict[name][1] )
     indx_ok = np.logical_and(indx_ok,  X_out[:,indx]>= downselect_dict[name][0] )
     print('   Increment downselect : {} {} '.format(name, np.sum(indx_ok) ))
+
+#enforce m1 >= m2 for populations
+if opts.downselect_mass_range and ("m1" in coord_names) and ("m2" in coord_names):
+    m1_indx = coord_names.index("m1")
+    m2_indx = coord_names.index("m2")
+    indx_ok = np.logical_and(indx_ok,  X_out[:,m1_indx]>= X_out[:,m2_indx] )
+    print('   Increment downselect : {} {} '.format("m1>=m2", np.sum(indx_ok) ))
+
 X_out = X_out[indx_ok]
 dat_raw = dat_raw[indx_ok] # must downselect here as well!
     
