@@ -25,6 +25,7 @@ eos_names = ["lnL", "gamma0", "gamma1", "gamma2", "gamma3", "m1", "m2"]
 eos_indices = None
 cons_file = 0
 marges = {}
+iteration = ""
 
 #Process One: checking MARG files for fail codes & showing output
 for e, eos in enumerate(opts.using_eos):
@@ -37,6 +38,7 @@ for e, eos in enumerate(opts.using_eos):
         if len(filename) == 14:
             print("Recognized consolidated_X.net_marg file for iteration.")
             marg = None
+            iteration = filename[-1]
             cons_file = 1
             marges[filename] = ["CON",e]
         elif len(filename) == 16:
@@ -161,9 +163,11 @@ for e, eos in enumerate(opts.using_eos):
 
 
 #Process Two (optional): make table showing all lnLs together for each eos
-if opts.save_consolidation_file:
+if opts.save_consolidation_table:
     print("\nMaking consolidation table.")
     net_table = {}
+    
+    if iteration is None: iteration = "no_CON"
     
     initial_dat = None
     initial_dat_len = 0
@@ -205,10 +209,10 @@ if opts.save_consolidation_file:
     
     if opts.save_duplicates_report:
         header = "Count "+" ".join(eos_names[1:])
-        with open("lnL_consolidation_duplicates.dat", 'w') as file_out:
+        with open("lnL_consolidation_duplicates_"+iteration+".dat", 'w') as file_out:
             file_out.write("# " + header + "\n")
             for key in list(dup_lines.keys()):
-                file_out.write(" {}   ".format(dup_lines[key]) + ' '.join(map(str,key)) )
+                file_out.write(" {}   ".format(dup_lines[key]) + ' '.join(map(str,key)) +"\n")
         print(" Duplication report saved.")
     
     #add lnLs for each file to dict
@@ -262,10 +266,10 @@ if opts.save_consolidation_file:
     if opts.sum_marg: header += "lnL_sum "
     for m in marges:
         if marges[m][0] != "CON":
-            header += "lnL_"+m[0]+" "
+            header += "lnL_"+marges[m][0]+" "
     header += " ".join(eos_names[1:])
     #np.savetxt("lnL_consolidation_table.dat",final_table,header=header)
-    with open("lnL_consolidation_table.dat", 'w') as file_out:
+    with open("lnL_consolidation_table_"+iteration+".dat", 'w') as file_out:
         file_out.write("# " + header + "\n")
 
         for i, key in enumerate(net_table.keys()):
