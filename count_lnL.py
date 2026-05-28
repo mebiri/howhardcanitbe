@@ -27,13 +27,44 @@ cons_file = 0
 marges = {}
 iteration = ""
 
-if opts.iteration:
+if opts.iteration is not None:
     iteration = str(opts.iteration)
+    fail_report_name = "lnL_fail_report_"+iteration+".txt"
+elif opts.input_grid is not None:
+    iteration = opts.input_grid.split("/")[-1].split(".")[0][-1]
     fail_report_name = "lnL_fail_report_"+iteration+".txt"
 else:
     fail_report_name = "lnL_fail_report.txt"
 
-#Process One: checking MARG files for fail codes & showing output
+dat_init = np.genfromtxt(opts.using_eos[0].replace('file:', ''),names=True)[0]
+param_names = dat_init.dtype.names #separate out the names from the data
+eos_indices = [param_names.index(n) for n in eos_names] 
+
+initial_dat = None
+initial_dat_len = 0
+longest_file = ""
+if opts.input_grid:
+    initial_dat = np.genfromtxt(opts.input_grid)[:,eos_indices] #these better match
+    grid_it = opts.input_grid.split("/")[-1][-2:]
+    puff_grid = opts.input_grid[:-6]+"_puff"+grid_it
+    print("Attempting to access grid_puff file: "+puff_grid.split("/")[-1])
+    try:
+        puff_dat = np.genfromtxt(puff_grid)[:,eos_indices]
+        initial_dat = np.concatenate((initial_dat,puff_dat), axis=0)
+    except:
+        print("   WARNING: could not find grid_puff file. RIP.")
+    initial_dat_len = len(initial_dat)
+    print(" Length of initial grid file(s):",initial_dat_len)
+else:
+    print("No grid file supplied.")
+    for e in opts.using_eos: #absolutely terrible
+        fname = e.replace('file:', '')
+        dat_check = np.genfromtxt(fname)[:,0]
+        initial_dat_len = max(initial_dat_len,len(dat_check))
+    print(" No initial grid; found highest file length:",initial_dat_len)
+
+
+#Process 1: checking MARG files for fail codes & showing output
 for e, eos in enumerate(opts.using_eos):
     fname = eos.replace('file:', '')
     
@@ -62,22 +93,14 @@ for e, eos in enumerate(opts.using_eos):
         sys.exit(0)
     
     if opts.save_consolidation_table:
-        if eos_indices is None:
-            dat = np.genfromtxt(fname,names=True)
-            param_names = dat.dtype.names #separate out the names from the data
-            dat_as_array = dat.view((float, len(param_names)))
-            eos_indices = [param_names.index(n) for n in eos_names] 
-            eos_data[filename] = dat_as_array[:,eos_indices]
-            lnL_dat = dat_as_array[:,0]
-        else:
-            dat = np.genfromtxt(fname)[:,eos_indices]
-            eos_data[filename] = dat
-            lnL_dat = dat[:,0] 
+        dat = np.genfromtxt(fname)[:,eos_indices]
+        eos_data[filename] = dat
+        lnL_dat = dat[:,0] 
     else:
         lnL_dat = np.genfromtxt(fname)[:,0]
     
     dat_len = len(lnL_dat)
-    print("Length of data:",dat_len)    
+    print("Length of data:",dat_len,"  (",(dat_len/initial_dat_len)*100.,"% of longest)")    
     fail_dict = {}
     
     if marg is not None:
@@ -115,7 +138,7 @@ for e, eos in enumerate(opts.using_eos):
         
         with open(fail_report_name, 'a') as file_out:
             file_out.write("Results for file "+fname.split("/")[-1]+" ("+marges[filename][0]+"):" + "\n")
-            file_out.write(" Length of data: "+str(dat_len)+"\n")
+            file_out.write(" Length of data: "+str(dat_len)+"  ({} % of longest)\n".format((dat_len/initial_dat_len)*100.))
             for fail in fail_dict:
                 file_out.write(" "+fail+" fails ({}): {}   {} %\n".format(fail_dict[fail][0],fail_dict[fail][1],fail_dict[fail][2]))
             file_out.write(" Good lines: {}   {} %\n\n".format(good_lines,(good_lines/dat_len)*100.))
@@ -181,7 +204,7 @@ for e, eos in enumerate(opts.using_eos):
         
         with open(fail_report_name, 'a') as file_out:
             file_out.write("Results for file "+fname.split("/")[-1]+":" + "\n")
-            file_out.write(" Length of data: "+str(dat_len)+"\n")
+            file_out.write(" Length of data: "+str(dat_len)+"  ({} % of longest)\n".format((dat_len/initial_dat_len)*100.))
             file_out.write(" Mass-only fails (-4.5):   {}   {} %\n".format(mf_eg_mg,(mf_eg_mg/dat_len)*100.) +
                            " Mass, mmax fails (-14.5): {}   {} %\n".format(mf_eg_mb,(mf_eg_mb/dat_len)*100.) +
                            " Mass, EOS fails (-7.5):   {}   {} %\n".format(mf_ef,(mf_ef/dat_len)*100.) +
@@ -189,7 +212,8 @@ for e, eos in enumerate(opts.using_eos):
                            " Mmax-only fails (-12.5):  {}   {} %\n".format(mg_eg_mb,(mg_eg_mb/dat_len)*100.) +
                            " Other fails (-1):         {}   {} %\n".format(other_fails,(other_fails/dat_len)*100.))
                            #" Good lines:               {}   {} %\n\n".format(good_lines,(good_lines/dat_len)*100.))
-            file_out.write(" Good lines: {}   {} %\n\n".format(good_lines,(good_lines/dat_len)*100.))
+            file_out.write(" Good lines: {}   {} %\n".format(good_lines,(good_lines/dat_len)*100.))
+            file_out.write("          of total: {} %\n\n".format((good_lines/initial_dat_len)*100.))
         print("Results for this file saved.")
 
 #Process Two (optional): make table showing all lnLs together for each eos
@@ -199,13 +223,14 @@ if opts.save_consolidation_table:
     
     if iteration is None: iteration = "no_CON"
     
-    initial_dat = None
-    initial_dat_len = 0
+    #initial_dat = None
+    #initial_dat_len = 0
     longest_file = ""
     if opts.input_grid:
-        initial_dat = np.genfromtxt(opts.input_grid)[:,eos_indices] #these better match
-        initial_dat_len = len(initial_dat)
-        print(" Length of initial grid file:",initial_dat_len)
+        print(" Using input grid data; length:",initial_dat_len)
+        #initial_dat = np.genfromtxt(opts.input_grid)[:,eos_indices] #these better match
+        #initial_dat_len = len(initial_dat)
+        #print(" Length of initial grid file:",initial_dat_len)
     else:
         for eos in eos_data: #find max available file length
             length = len(eos_data[eos])
@@ -243,7 +268,7 @@ if opts.save_consolidation_table:
             file_out.write("# " + header + "\n")
             for key in list(dup_lines.keys()):
                 file_out.write(" {}   ".format(dup_lines[key]) + ' '.join(map(str,key)) +"\n")
-        print(" Duplication report saved.")
+        print(" Duplication report saved;",len(dup_lines),"reoccurring lines.")
     
     #add lnLs for each file to dict
     marg_col_tracker = 0
@@ -258,12 +283,8 @@ if opts.save_consolidation_table:
             marges[eos][1] = marg_col
         print(" MARG column for this file is:",marg_col)
         
-        #if eos == longest_file:
-            #final_table[:,marg_col] = eos_data[eos][:,0]
-        #    print(" This is the longest file; its data has already been filled. Continuing.")
-        #    continue
-        
         eos_line = 0
+        non_initial_lines = 0
         for i in np.arange(len(eos_data[eos])):
             line = np.around(eos_data[eos][i], decimals=7)
 
@@ -271,26 +292,22 @@ if opts.save_consolidation_table:
                 net_table[tuple(line[1:])][marg_col] = line[0]
                 eos_line += 1
             else:
-                print("WARNING: non-initial EOS line encountered!\n",i,line[1:])
+                #print("WARNING: non-initial EOS line encountered!\n",i,line[1:])
                 net_table[tuple(line[1:])] = np.zeros(len(eos_data)) 
                 net_table[tuple(line[1:])][marg_col] = line[0]
-
-                
-            #if (line[1:] == final_table[i,6:]).all():
-            #    final_table[i,marg_col] = line[0]
-            #    eos_line += 1
-            #else:
-            #    final_table[i,marg_col] = 0.0
+                with open("lnL_additional_lines_"+iteration+".txt", 'a') as file_out:
+                    file_out.write(marges[eos][0]+" "+str(i)+" " + ' '.join(map(str,line[1:]))+"\n")
+                non_initial_lines += 1
         
         if eos_line == len(eos_data[eos]): #equal b/c last good iteration sets eos_line+1
             print(" All lines for this eos file matched.")
         else:
             print(" Not all lines for this eos data were matched:",eos_line,"/",len(eos_data[eos]))
+        print(" Non-initial lines encountered:",non_initial_lines)
      
     sum_head = ""
     if opts.sum_marg:
         sum_head = "lnL_sum "
-    #final_table[:,2] = np.sum(final_table[:,3:6],axis=1)
     header = "idx "
     if cons_file == 1: header += "lnL_CON "
     if opts.sum_marg: header += "lnL_sum "
@@ -298,7 +315,7 @@ if opts.save_consolidation_table:
         if marges[m][0] != "CON":
             header += "lnL_"+marges[m][0]+" "
     header += " ".join(eos_names[1:])
-    #np.savetxt("lnL_consolidation_table.dat",final_table,header=header)
+
     with open("lnL_consolidation_table_"+iteration+".dat", 'w') as file_out:
         file_out.write("# " + header + "\n")
 
@@ -309,7 +326,7 @@ if opts.save_consolidation_table:
                 line_out += "{} ".format(np.sum(net_table[key][cons_file:]))
             for m in marges:
                 if marges[m][0] != "CON":
-                    line_out += "{} ".format(net_table[key][marges[m][1]])
+                    line_out += "{} ".format(net_table[key][marges[m][1]]) #hacky? assumes CON file is last
             line_out += " ".join(map(str,key))
             #print(" {} {} ".format(lnLnet, sigma) + ' '.join(map(str,key)) )
             file_out.write(line_out + "\n")
