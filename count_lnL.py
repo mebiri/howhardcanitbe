@@ -45,16 +45,20 @@ initial_dat_len = 0
 longest_file = ""
 if opts.input_grid:
     initial_dat = np.genfromtxt(opts.input_grid)[:,eos_indices] #these better match
-    grid_it = opts.input_grid.split("/")[-1][-2:]
+    grid_it = opts.input_grid.split("/")[-1][-6:]
     puff_grid = opts.input_grid[:-6]+"_puff"+grid_it
+    grid_len = len(initial_dat)
+    puff_len = 0
     print("Attempting to access grid_puff file: "+puff_grid.split("/")[-1])
     try:
         puff_dat = np.genfromtxt(puff_grid)[:,eos_indices]
         initial_dat = np.concatenate((initial_dat,puff_dat), axis=0)
+        puff_len = len(puff_dat)
     except:
         print("   WARNING: could not find grid_puff file. RIP.")
     initial_dat_len = len(initial_dat)
-    print(" Length of initial grid file(s):",initial_dat_len)
+    print(" Length of initial grid file(s):",grid_len,"+",puff_len,"=",initial_dat_len)
+    report_line = "(from grid file)"
 else:
     print("No grid file supplied.")
     for e in opts.using_eos: #absolutely terrible
@@ -62,6 +66,10 @@ else:
         dat_check = np.genfromtxt(fname)[:,0]
         initial_dat_len = max(initial_dat_len,len(dat_check))
     print(" No initial grid; found highest file length:",initial_dat_len)
+    report_line = "(no grid file)"
+
+with open(fail_report_name,'w') as file_out: #will overwrite preexisting file
+    file_out.write("Total initial data length for iteration "+iteration+" "+report_line+": "+str(initial_dat_len)+"\n\n")
 
 
 #Process 1: checking MARG files for fail codes & showing output
@@ -216,7 +224,7 @@ for e, eos in enumerate(opts.using_eos):
             file_out.write("          of total: {} %\n\n".format((good_lines/initial_dat_len)*100.))
         print("Results for this file saved.")
 
-#Process Two (optional): make table showing all lnLs together for each eos
+#Process 2 (optional): make table showing all lnLs together for each eos
 if opts.save_consolidation_table:
     print("\nMaking consolidation table.")
     net_table = {}
