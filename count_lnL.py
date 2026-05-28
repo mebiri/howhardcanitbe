@@ -19,7 +19,6 @@ parser.add_argument('--save-duplicates-report',action='store_true',help="saves f
 
 opts = parser.parse_args()
 
-fail_dict = {}
 eos_data = {}
 eos_names = ["lnL", "gamma0", "gamma1", "gamma2", "gamma3", "m1", "m2"]
 eos_indices = None
@@ -70,6 +69,7 @@ for e, eos in enumerate(opts.using_eos):
     
     dat_len = len(lnL_dat)
     print("Length of data:",dat_len)    
+    fail_dict = {}
     
     if marg is not None:
         if marg == 0: #PLE
@@ -97,11 +97,19 @@ for e, eos in enumerate(opts.using_eos):
                 #fails = lnL_dat.count(c[1])
                 indx_ok = np.logical_and(indx_ok, np.logical_not(lnL_dat == c[1]))
 
-            fail_dict[c[0]] = [c[1], fails, fails/dat_len]
+            fail_dict[c[0]] = [c[1], fails, (fails/dat_len)*100.0]
 
             print(" "+c[0]+" fails ("+str(c[1])+"):",fails,"   ",(fails/dat_len)*100.,"%")
         good_lines = lnL_dat[indx_ok]
         print(" Good lines:",len(good_lines),"   ",(len(good_lines)/dat_len)*100.,"%")
+        
+        with open("lnL_fail_report_"+iteration+".txt", 'a') as file_out:
+            file_out.write("Results for file "+fname.split("/")[-1]+" ("+marges[filename][0]+"):" + "\n")
+            file_out.write(" Length of data: "+str(dat_len)+"\n")
+            for fail in fail_dict:
+                file_out.write(" "+fail+" fails ({}): {}   {} %\n".format(fail_dict[fail][0],fail_dict[fail][1],fail_dict[fail][2]))
+            file_out.write(" Good lines: {}   {} %\n\n".format(len(good_lines),(len(good_lines)/dat_len)*100.))
+        print("Results for this file saved.")
     else:
         mf_eg_mg = 0
         mf_eg_mb = 0
@@ -153,14 +161,26 @@ for e, eos in enumerate(opts.using_eos):
                 good_lines += 1
         
         print("Results for file "+fname.split("/")[-1]+":")
-        print(" Mass-only fails (-4.5):  ",mf_eg_mg,"  ",(mf_eg_mg/dat_len)*100.,"%")
-        print(" Mass, mmax fails (-14.5):",mf_eg_mb,"  ",(mf_eg_mb/dat_len)*100.,"%")
-        print(" Mass, eos fails (-7.5):  ",mf_ef,"  ",(mf_ef/dat_len)*100.,"%")
-        print(" eos-only fails (-5.5):   ",mg_ef,"  ",(mg_ef/dat_len)*100.,"%")
-        print(" Mmax-only fails (-12.5):    ",mg_eg_mb,"  ",(mg_eg_mb/dat_len)*100.,"%")
-        print(" Other fails (-1):        ",other_fails,"  ",(other_fails/dat_len)*100.,"%")
+        print(" Mass-only fails (-4.5):   ",mf_eg_mg,"  ",(mf_eg_mg/dat_len)*100.,"%")
+        print(" Mass, mmax fails (-14.5): ",mf_eg_mb,"  ",(mf_eg_mb/dat_len)*100.,"%")
+        print(" Mass, eos fails (-7.5):   ",mf_ef,"  ",(mf_ef/dat_len)*100.,"%")
+        print(" eos-only fails (-5.5):    ",mg_ef,"  ",(mg_ef/dat_len)*100.,"%")
+        print(" Mmax-only fails (-12.5):  ",mg_eg_mb,"  ",(mg_eg_mb/dat_len)*100.,"%")
+        print(" Other fails (-1):         ",other_fails,"  ",(other_fails/dat_len)*100.,"%")
         print(" Good lines:",good_lines,"   ",(good_lines/dat_len)*100.,"%")
-
+        
+        with open("lnL_fail_report_"+iteration+".txt", 'a') as file_out:
+            file_out.write("Results for file "+fname.split("/")[-1]+":" + "\n")
+            file_out.write(" Length of data: "+str(dat_len)+"\n")
+            file_out.write(" Mass-only fails (-4.5):   {}   {} %\n".format(mf_eg_mg,(mf_eg_mg/dat_len)*100.) +
+                           " Mass, mmax fails (-14.5): {}   {} %\n".format(mf_eg_mb,(mf_eg_mb/dat_len)*100.) +
+                           " Mass, EOS fails (-7.5):   {}   {} %\n".format(mf_ef,(mf_ef/dat_len)*100.) +
+                           " EOS-only fails (-5.5):    {}   {} %\n".format(mg_ef,(mg_ef/dat_len)*100.) +
+                           " Mmax-only fails (-12.5):  {}   {} %\n".format(mg_eg_mb,(mg_eg_mb/dat_len)*100.) +
+                           " Other fails (-1):         {}   {} %\n".format(other_fails,(other_fails/dat_len)*100.))
+                           #" Good lines:               {}   {} %\n\n".format(good_lines,(good_lines/dat_len)*100.))
+            file_out.write(" Good lines: {}   {} %\n\n".format(len(good_lines),(len(good_lines)/dat_len)*100.))
+        print("Results for this file saved.")
 
 #Process Two (optional): make table showing all lnLs together for each eos
 if opts.save_consolidation_table:
