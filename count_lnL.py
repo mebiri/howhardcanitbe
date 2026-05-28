@@ -160,6 +160,10 @@ for e, eos in enumerate(opts.using_eos):
         mg_eg_mg = 0
         other_fails = 0
         good_lines = 0
+        #mf_eg_mbc = 0
+        #mf_eg_mbn = 0
+        #mg_eg_mbc = 0
+        #mg_eg_mbn = 0
         
         for i in np.arange(dat_len):
             lnL = lnL_dat[i]
@@ -174,29 +178,40 @@ for e, eos in enumerate(opts.using_eos):
                 #NICER mmax: -6
                 #NICER other: -1
                 #Possible combos: 
-                    #mass fail, EOS good, mmax good: -2 PLE + -2.5 CIP + 0 NICER = -4.5
-                    #mass fail, EOS good, mmax bad:  -2 PLE + -6.5 CIP + -6 NICER = -14.5
-                    #mass fail, EOS fail: -2 PLE + -1.5 CIP + -4 NICER = -7.5
-                    #mass good, EOS fail: 0 PLE + -1.5 CIP + -4 NICER = -5.5
-                    #mass good, EOS good, mmax bad: 0 PLE + -6.5 CIP + -6 NICER = -12.5
+                    #mass fail, EOS good, mmax good: -2 PLE + -2.5 CIP + 0 NICER   = -4.5
+                    #mass fail, EOS good, all mmax bad: -2 PLE + -6.5 CIP + -6 NCR = -14.5
+                    #mass fail, EOS good, CIP mmax bad: -2 PLE + -6.5 CIP + 0  NCR = -8.5
+                    #mass fail, EOS good, NCR mmax bad: -2 PLE + -2.5 CIP + -6 NCR = -10.5
+                    #mass fail, EOS fail: -2 PLE + -1.5 CIP + -4 NICER             = -7.5
+                    #mass good, EOS fail: 0 PLE + -1.5 CIP + -4 NICER              = -5.5
+                    #mass good, EOS good, all mmax bad: 0 PLE + -6.5 CIP + -6 NCR  = -12.5
+                    #mass good, EOS good, CIP mmax bad: 0 PLE + -6.5 CIP + 0 NCR   = -6.5
+                    #mass good, EOS good, NCR mmax bad: 0 PLE + 0 CIP + -6 NICER   = -6
                     #mass good, EOS good, mmax good: 0 PLE + 0 CIP + 0 NICER >~ 0
                     #mass good, EOS good, mmax good, other NICER/CIP = -1 or -2
          
             #indx_ok = np.ones(dat_len,dtype=bool)
             #indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(lnL_dat[:,0])))
     
-            if lnL <= -14e6:
-                #mass fail, EOS good, mmax bad:  -2 PLE + -6.5 CIP + -6 NICER = -14.5
+            if lnL <= -14e6:   #-14.5
                 mf_eg_mb += 1
-            elif lnL <= -12e6:
+            elif lnL <= -12e6: #-12.5
                 mg_eg_mb += 1
-            elif lnL <= -7e6:
+            elif lnL <= -10e6: #-10.5
+                mf_eg_mb += 1
+            elif lnL <= -8e6:  #-8.5
+                mf_eg_mb += 1
+            elif lnL <= -7e6:  #-7.5
                 mf_ef += 1
-            elif lnL <= -5.4e6:
+            elif lnL <= -6.4e6: #-6.5
+                mg_eg_mb += 1
+            elif lnL <= -5.9e6: #-6
+                mg_eg_mb += 1
+            elif lnL <= -5.4e6: #-5.5
                 mg_ef += 1
-            elif lnL <= -4.4e6:
+            elif lnL <= -4.4e6: #-4.5
                 mf_eg_mg += 1
-            elif lnL <= -0.5e6:
+            elif lnL <= -0.5e6: #-1 or -2
                 other_fails += 1
             else:
                 good_lines += 1
