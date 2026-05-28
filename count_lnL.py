@@ -16,6 +16,7 @@ parser.add_argument('--save-consolidation-table',action='store_true',help="creat
 parser.add_argument('--sum-marg',action='store_true',help="include column manually adding provided MARG lnLs together, to compare to CON file lnL in consolidation table")
 parser.add_argument('--input-grid',type=str,help="Grid file for iteration (EOS NEEDS TO MATCH) - helpful, more reliable, but not required")
 parser.add_argument('--save-duplicates-report',action='store_true',help="saves files with list of duplicate EOS lines encountered when making consolidation table dict")
+parser.add_argument('--iteration',default=None,type=int,help="Provide iteration if no CON file, to be nice")
 
 opts = parser.parse_args()
 
@@ -25,6 +26,12 @@ eos_indices = None
 cons_file = 0
 marges = {}
 iteration = ""
+
+if opts.iteration:
+    iteration = str(opts.iteration)
+    fail_report_name = "lnL_fail_report_"+iteration+".txt"
+else:
+    fail_report_name = "lnL_fail_report.txt"
 
 #Process One: checking MARG files for fail codes & showing output
 for e, eos in enumerate(opts.using_eos):
@@ -37,7 +44,9 @@ for e, eos in enumerate(opts.using_eos):
         if len(filename) == 14:
             print("Recognized consolidated_X.net_marg file for iteration.")
             marg = None
-            iteration = filename[-1]
+            if iteration == "": 
+                iteration = filename[-1]
+                fail_report_name = "lnL_fail_report_"+iteration+".txt"
             cons_file = 1
             marges[filename] = ["CON",e]
         elif len(filename) == 16:
@@ -94,21 +103,22 @@ for e, eos in enumerate(opts.using_eos):
                 indx_ok = np.logical_and(indx_ok, np.logical_not(np.isnan(lnL_dat)))
             else:
                 fails = np.count_nonzero(lnL_dat == c[1])
-                #fails = lnL_dat.count(c[1])
                 indx_ok = np.logical_and(indx_ok, np.logical_not(lnL_dat == c[1]))
 
             fail_dict[c[0]] = [c[1], fails, (fails/dat_len)*100.0]
+            #marges[filename].append([c[0],c[1],fails,(fails/dat_len)*100.0])
 
             print(" "+c[0]+" fails ("+str(c[1])+"):",fails,"   ",(fails/dat_len)*100.,"%")
-        good_lines = lnL_dat[indx_ok]
-        print(" Good lines:",len(good_lines),"   ",(len(good_lines)/dat_len)*100.,"%")
+        good_lines = np.sum(indx_ok)
+        #marges[filename].append(["Good lines",good_lines,(good_lines/dat_len)*100.0])
+        print(" Good lines:",good_lines,"   ",(good_lines/dat_len)*100.,"%")
         
-        with open("lnL_fail_report_"+iteration+".txt", 'a') as file_out:
+        with open(fail_report_name, 'a') as file_out:
             file_out.write("Results for file "+fname.split("/")[-1]+" ("+marges[filename][0]+"):" + "\n")
             file_out.write(" Length of data: "+str(dat_len)+"\n")
             for fail in fail_dict:
                 file_out.write(" "+fail+" fails ({}): {}   {} %\n".format(fail_dict[fail][0],fail_dict[fail][1],fail_dict[fail][2]))
-            file_out.write(" Good lines: {}   {} %\n\n".format(len(good_lines),(len(good_lines)/dat_len)*100.))
+            file_out.write(" Good lines: {}   {} %\n\n".format(good_lines,(good_lines/dat_len)*100.))
         print("Results for this file saved.")
     else:
         mf_eg_mg = 0
@@ -169,7 +179,7 @@ for e, eos in enumerate(opts.using_eos):
         print(" Other fails (-1):         ",other_fails,"  ",(other_fails/dat_len)*100.,"%")
         print(" Good lines:",good_lines,"   ",(good_lines/dat_len)*100.,"%")
         
-        with open("lnL_fail_report_"+iteration+".txt", 'a') as file_out:
+        with open(fail_report_name, 'a') as file_out:
             file_out.write("Results for file "+fname.split("/")[-1]+":" + "\n")
             file_out.write(" Length of data: "+str(dat_len)+"\n")
             file_out.write(" Mass-only fails (-4.5):   {}   {} %\n".format(mf_eg_mg,(mf_eg_mg/dat_len)*100.) +
@@ -179,7 +189,7 @@ for e, eos in enumerate(opts.using_eos):
                            " Mmax-only fails (-12.5):  {}   {} %\n".format(mg_eg_mb,(mg_eg_mb/dat_len)*100.) +
                            " Other fails (-1):         {}   {} %\n".format(other_fails,(other_fails/dat_len)*100.))
                            #" Good lines:               {}   {} %\n\n".format(good_lines,(good_lines/dat_len)*100.))
-            file_out.write(" Good lines: {}   {} %\n\n".format(len(good_lines),(len(good_lines)/dat_len)*100.))
+            file_out.write(" Good lines: {}   {} %\n\n".format(good_lines,(good_lines/dat_len)*100.))
         print("Results for this file saved.")
 
 #Process Two (optional): make table showing all lnLs together for each eos
