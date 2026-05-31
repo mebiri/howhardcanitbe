@@ -24,10 +24,22 @@ parser.add_argument("--random-parameter", action='append',help="These parameters
 parser.add_argument("--random-parameter-range", action='append', type=str,help="Add a range (pass as a string evaluating to a python 2-element list): --parameter-range '[0.,1000.]'   MUST specify ALL parameter ranges (min and max) in order if used.  ")
 parser.add_argument("--downselect-parameter",action='append', help='Name of parameter to be used to eliminate grid points ')
 parser.add_argument("--downselect-parameter-range",action='append',type=str)
+parser.add_argument("--reflect-parameter",action='append',type=str)
 parser.add_argument("--regularize",action='store_true',help="Add some ad-hoc terms based on priors, to help with nearly-singular matricies")
-parser.add_argument("--downselect-rotated-spectral-coords",action='store_true',help="Apply rotated coord sys to spectral EOS params; from Wysocki 2020 https://arxiv.org/pdf/2001.01747")
+parser.add_argument("--use-rotated-spectral-coords",action='store_true',help="Apply rotated coord sys to spectral EOS params; from Wysocki 2020 https://arxiv.org/pdf/2001.01747")
 parser.add_argument("--downselect-mass-range",action='store_true',help="Reject points where m2 > m1 for population models (slightly hacky; prefer diff coord sys)")
+parser.add_argument("--rotated-coord-buffer",default=0.0,type=float,help="Fractional buffer (e.g., 0.1; default 0) to extend rotated hypercube space")
 opts=  parser.parse_args()
+
+#opts.inj_file = "grid_test.txt"
+#opts.puff_factor = 0.6
+#opts.parameter = ["gamma0", "gamma1","gamma2","gamma3","m1","m2"]
+#opts.downselect_parameter = ["m1","m2"]#["gamma0", "gamma1","gamma2","gamma3","m1","m2"]
+#opts.downselect_parameter_range = ["[1.0,3.0]", "[1.0,3.0]"] #["[0.2,2]","[-1.6,1.7]","[-0.6,0.6]","[-0.02,0.02]", "[1.0,3.0]", "[1.0,3.0]"] 
+#opts.use_rotated_spectral_coords = True
+#opts.downselect_mass_range = True
+#opts.rotated_coord_buffer = 0.1
+#opts.reflect_parameter = ["m1","m2"]
 
 if opts.random_parameter is None:
     opts.random_parameter = []
@@ -57,7 +69,7 @@ if not(opts.no_correlation is None):
 #    print opts.no_correlation, coord_names, corr_list
 
 downselect_dict = {}
-
+reflect_dict={}
 
 
 if opts.downselect_parameter:
@@ -72,6 +84,20 @@ if len(dlist) != len(dlist_ranges):
 for indx in np.arange(len(dlist_ranges)):
     downselect_dict[dlist[indx]] = dlist_ranges[indx]
 
+indx_reflect=[]
+rlist=[]
+if opts.reflect_parameter:
+    rlist  = opts.reflect_parameter
+    indx_reflect = [coord_names.index(param) for param in opts.reflect_parameter]
+if len(rlist) > len(coord_names):
+    print(" reflection parameters inconsistent", rlist, coord_names)
+    raise Exception(" Reflection only allowed for coordinates ")
+for indx in np.arange(len(rlist)):
+    if not(rlist[indx] in coord_names):
+        raise Exception(" Reflection only allowed for coordinates (--parameter) ")
+    if not(rlist[indx] in downselect_dict):
+        raise Exception(" Reflection requires parameter range specified as a downselection ")
+    reflect_dict[rlist[indx]] = downselect_dict[rlist[indx]]
 
 
 
@@ -113,19 +139,34 @@ if len(coord_names) >1:
     # Compute errors
     rv = scipy.stats.multivariate_normal(mean=np.zeros(len(coord_names)), cov=cov,allow_singular=True)  # they are just complaining about dynamic range of parameters, usually
     delta_X = rv.rvs(size=len(X))
-    X_out = X+delta_X
+    X_out = X#+delta_X
+    
+    # Reflection
+    for indx in indx_reflect:
+        param = coord_names[indx]
+        print("   Reflecting into range : {} [{}, {}]".format(param,reflect_dict[param][0],reflect_dict[param][1]))
+        # put in range [0,2 L]
+        tmp = reflect_dict[param][0] + np.mod(X_out[:,indx] - reflect_dict[param][0], 2*(reflect_dict[param][1] - reflect_dict[param][0]) )
+        # final reflection
+        tmp = np.where( tmp > reflect_dict[param][1], 2*reflect_dict[param][1] - tmp, tmp)
+        X_out[:,indx] = tmp
+        # DELETE parameter from downselet_dict : no longer needed
+        del downselect_dict[param]
+        
 else:
     sigma = np.std(X)
     cov = sigma*sigma
     delta_X =np.random.normal(size=len(coord_names), scale=sigma)
     X_out = X+delta_X
 
+
 # Downselect
 names_downselect = list(downselect_dict.keys())
 indx_ok = np.ones(len(X_out),dtype=bool)
+print(" Initial data length:",len(X_out))
 
 #Apply rotation to spectral EOS params from Wysocki et. al 2020 https://arxiv.org/pdf/2001.01747
-if opts.downselect_rotated_spectral_coords:
+if opts.use_rotated_spectral_coords:
     print(" Applying rotated coordinate transformation to spectral parameters")
     dan_rot = [[0.43801, -0.53573, 0.52661, -0.49379],
                [-0.76705, 0.17169, 0.31255, -0.53336],
@@ -133,33 +174,63 @@ if opts.downselect_rotated_spectral_coords:
                [0.12646, 0.47070, 0.76626, 0.41868]]
     scaled_mean = [0.89421, 0.33878, -0.07894, 0.00393]
     scaled_sig = [0.35700, 0.25769, 0.05452, 0.00312]
+    dan_inv = np.linalg.inv(dan_rot)
     
     #get gammas' indices in X_out(= X) from coord names
     r_tilde = np.zeros((len(X_out),4))
+    rot_cols = []
     for i in np.arange(4):
         #do one coord at a time
         indx = coord_names.index("gamma"+str(i))
+        rot_cols.append(indx)
 
         #convert gammas to r_tilde using equation: r_tilde = (gamma - u)/sig
         r_tilde[:,i] = (X_out[:,indx] - scaled_mean[i])/scaled_sig[i]
 
     #apply transform: r_prime = S*r_tilde ( [4 x 4].([N x 4].T) )
-    r_prime = np.matmul(dan_rot,r_tilde.T)
-    r_prime = r_prime.T 
+    r_prime = np.matmul(dan_rot,r_tilde.T).T
     
-    # downselect 
-    downselect_rot = {}
-    downselect_rot["r0"] = [-4.37722, 4.91227]
-    downselect_rot["r1"] = [-1.82240, 2.06387]
-    downselect_rot["r2"] = [-0.32445, 0.36469]
-    downselect_rot["r3"] = [-0.09529, 0.11426]
-    for indx, name in enumerate(downselect_rot.keys()):
-        indx_ok = np.logical_and(indx_ok,  r_prime[:,indx]<= downselect_rot[name][1] )
-        indx_ok = np.logical_and(indx_ok,  r_prime[:,indx]>= downselect_rot[name][0] )
-        print('   Increment downselect : {} {} '.format(name, np.sum(indx_ok) ))
+    rot_coords = {}
+    rot_coords["r0"] = [-4.37722, 4.91227]
+    rot_coords["r1"] = [-1.82240, 2.06387]
+    rot_coords["r2"] = [-0.32445, 0.36469]
+    rot_coords["r3"] = [-0.09529, 0.11426]
+    
+    for indx, param in enumerate(rot_coords.keys()):
+        # apply hypercube buffer
+        ubound = rot_coords[param][1] + opts.rotated_coord_buffer*rot_coords[param][1]
+        lbound = rot_coords[param][0] + opts.rotated_coord_buffer*rot_coords[param][0]
+        if opts.reflect_parameter:
+            # Reflection
+            print("   Reflecting into range : {} [{}, {}]".format(param,lbound,ubound))
+            # put in range [0,2 L]
+            tmp = rot_coords[param][0] + np.mod(r_prime[:,indx] - rot_coords[param][0], 2*(rot_coords[param][1] - rot_coords[param][0]) )
+            # final reflection
+            tmp = np.where( tmp > rot_coords[param][1], 2*rot_coords[param][1] - tmp, tmp)
+            r_prime[:,indx] = tmp 
+        else:
+            # Downselection             
+            #print(" Downselecting:",name,"; indx:",indx,"[",lbound,ubound,"]; buffer =",opts.rotated_coord_buffer)
+            indx_ok = np.logical_and(indx_ok,  r_prime[:,indx]<= ubound )
+            indx_ok = np.logical_and(indx_ok,  r_prime[:,indx]>= lbound )
+            print('   Increment downselect : {} {} '.format(param, np.sum(indx_ok) ))
+    
+    if opts.reflect_parameter:
+        #apply inverse: S-1*r_prime = S-1*S*r_tilde = r_tilde ( [4 x 4].([N x 4].T) )
+        r_tilde_post = np.matmul(dan_inv,r_prime.T).T
+        
+        for i, col in enumerate(rot_cols):    
+            #r_tilde = (gamma - u)/sig  ->  gamma = r_tilde*sig + u
+            X_out[:,col] = (r_tilde_post[:,i]*scaled_sig[i]) + scaled_mean[i]
+            
+
+#print("post rotational downselect:")
+#print(X_out[:,:4])
 
 # no conversion needed
-for indx, name in enumerate(names_downselect):
+for name in names_downselect:
+    indx = coord_names.index(name)
+    #print(" Downselecting:",name,"; indx:",indx,"[",downselect_dict[name][0],downselect_dict[name][1],"]")
     indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(X_out[:,indx])))
     indx_ok = np.logical_and(indx_ok,  X_out[:,indx]<= downselect_dict[name][1] )
     indx_ok = np.logical_and(indx_ok,  X_out[:,indx]>= downselect_dict[name][0] )
