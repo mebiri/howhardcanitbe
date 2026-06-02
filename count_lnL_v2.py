@@ -1,10 +1,8 @@
 #! /usr/bin/env python
 """
-Created on Tue May 19 01:38:17 2026
-
-@author: marce
+Count fail codes from MARG processes (PLE, CIP, NICER likelihood codes)
+To see what is going wrong, for debugging purposes
 """
-
 
 import numpy as np
 import argparse
@@ -46,7 +44,7 @@ else:
     fail_report_name = "lnL_fail_report"
 
 if eos_indices is None:
-    dat_init = np.genfromtxt(opts.using_eos[0].replace('file:', ''),names=True)[0]
+    dat_init = np.genfromtxt(opts.marg_eos[0].replace('file:', ''),names=True)[0]
     param_names = dat_init.dtype.names #separate out the names from the data
     eos_indices = [param_names.index(n) for n in eos_names]
 
@@ -60,29 +58,29 @@ for e, eos in enumerate(opts.marg_eos):
     fname = eos.replace('file:', '')
     
     filename=fname.split("/")[-1].split(".")[0]
-    print("\nInspecting filename: "+filename)
+    print("Inspecting filename: "+filename)
     if filename.startswith("consolidated_"):
         if len(filename) == 14:
-            print("Recognized consolidated_X.net_marg file for iteration.")
+            print(" Recognized consolidated_X.net_marg file for iteration.")
             if iteration == "": 
                 iteration = filename[-1]
                 fail_report_name = "lnL_fail_report_"+iteration
             marges[filename] = ["CON",e,-1]
         elif len(filename) == 16:
             if opts.marges[e] == 'P': #PLE
-                fail_code_dict[filename] = [["PLE-mass",-2e6]]
+                fail_code_dict[filename] = [["PLE-mass  ",-2e6]]
                 marges[filename] = ["PLE",e,int(filename[-1])]
             elif opts.marges[e] == 'C': #CIP
-                fail_code_dict[filename] = [["CIP-EOS",-1.5e6], ["CIP-Mmax",-6.5e6], ["CIP-mass",-2.5e6], ["CIP-nan",np.nan], ["CIP-other",-1e6]]
+                fail_code_dict[filename] = [["CIP-EOS  ",-1.5e6], ["CIP-Mmax ",-6.5e6], ["CIP-mass ",-2.5e6], ["CIP-nan  ",np.nan], ["CIP-other",-1e6]]
                 marges[filename] = ["CIP",e,int(filename[-1])]
             elif opts.marges[e] == 'N': #NICER
-                fail_code_dict[filename] = [["NICER-EOS",-4e6], ["NICER-Mmax",-6e6], ["NICER-other",-1e6]]
+                fail_code_dict[filename] = [["NCR-EOS  ",-4e6], ["NCR-Mmax ",-6e6], ["NCR-other",-1e6]]
                 marges[filename] = ["NCR",e,int(filename[-1])]
             else:
-                print("Warning: unsupported MARG file ID: "+opts.marges[e]+". Only P,C,N supported.")
+                print("  Warning: unsupported MARG file ID: "+opts.marges[e]+". Only P,C,N supported.")
                 fail_code_dict[filename] = ["Unknown",-1e6] #generic check
                 marges[filename] = ["Unknown",e,int(filename[-1])]
-            print("Recognized consolidated_X_Y.net_marg file for MARG process:",marges[filename][0],marges[filename][2])
+            print(" Recognized consolidated_X_Y.net_marg file for MARG process:",marges[filename][0],marges[filename][2])
         else:
             print("ERROR: could not recognize consolidated file. Exiting.")
             import sys
@@ -137,17 +135,18 @@ for eos in eos_data:
     else:
         lnL_dat = eos_data[eos]
     
+    print("\nResults for file "+eos+".net_marg:")
+
     dat_len = len(lnL_dat)
-    print("Length of data:",dat_len,"  (",(dat_len/initial_dat_len)*100.,"% of longest)")    
+    print(" Length of data:",dat_len,"  (",(dat_len/initial_dat_len)*100.,"% of longest)")    
     fail_dict = {}
     
     if marges[eos][2] >= 0:
         fail_codes = fail_code_dict[eos]
         
-        print("Results for file "+eos+".net_marg:")
         indx_ok = np.ones(dat_len,dtype=bool)
         for c in fail_codes:
-            if c[0] == "CIP-nan": #alt: np.isnan(c[1]) -> more flexible
+            if c[0] == "CIP-nan  ": #alt: np.isnan(c[1]) -> more flexible
                 fails = np.count_nonzero(np.isnan(lnL_dat))
                 indx_ok = np.logical_and(indx_ok, np.logical_not(np.isnan(lnL_dat)))
             else:
@@ -185,14 +184,14 @@ for eos in eos_data:
         
         #this needs to be more flexible, allow for diff orders of MARGs
         if opts.marges == 'PCN':
-            check_sums = [[-14.5e6,"Mass, mmax-both",0],[-12.5e6,"Mmax-both",0],
-                          [-10.5e6,"Mass, mmax-NCR",0],[-8.5e6,"Mass, mmax-CIP",0],
-                          [-7.5e6,"Mass, EOS",0],[-6.5e6,"Mmax-CIP",0],[-6e6,"Mmax-NCR",0],
-                          [-5.5e6,"EOS-only",0],[-4.5e6,"Mass-only",0],[-1e6,"Other",0]]
+            check_sums = [[-14.5e6,"Mass+mmax-all",0],[-12.5e6,"Mmax-all     ",0],
+                          [-10.5e6,"Mass+mmax-NCR",0],[-8.5e6,"Mass+mmax-CIP ",0],
+                          [-7.5e6,"Mass+EOS      ",0],[-6.5e6,"Mmax-CIP      ",0],[-6e6,"Mmax-NCR      ",0],
+                          [-5.5e6,"EOS-only      ",0],[-4.5e6,"Mass-only     ",0],[-1e6,"Other         ",0]]
         elif opts.marges == 'CN':
-            check_sums = [[-12.5e6,"Mmax-both",0],[-8.5e6,"Mass, mmax-NCR",0],
-                          [-6.5e6,"Mmax-CIP",0],[-6e6,"Mmax-NCR",0],
-                          [-5.5e6,"EOS-only",0],[-2.5e6,"Mass-only",0],[-1e6,"Other",0]]
+            check_sums = [[-12.5e6,"Mmax-both   ",0],[-8.5e6,"Mass+mmax-NCR",0],
+                          [-6.5e6,"Mmax-CIP     ",0],[-6e6,"Mmax-NCR     ",0],
+                          [-5.5e6,"EOS-only     ",0],[-2.5e6,"Mass-only    ",0],[-1e6,"Other        ",0]]
         elif opts.marges == 'PC':
             check_sums = [[-1e6,0]] #not implemented
         elif opts.marges == 'PN':
@@ -225,7 +224,6 @@ for eos in eos_data:
                     #mass good, EOS good, mmax good: 0 PLE + 0 CIP + 0 NICER >~ 0
                     #mass good, EOS good, mmax good, other NICER/CIP = -1 or -2
         
-        print("Results for file "+fname.split("/")[-1]+":")
         indx_ok = np.ones(dat_len,dtype=bool)
         #indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(lnL_dat[:,0])))
         #if len(check_sums) == 1:
@@ -266,14 +264,9 @@ if opts.save_consolidation_table:
     
     if iteration is None: iteration = "no_CON"
     
-    #initial_dat = None
-    #initial_dat_len = 0
     longest_file = ""
     if opts.input_grid:
         print(" Using input grid data; length:",initial_dat_len)
-        #initial_dat = np.genfromtxt(opts.input_grid)[:,eos_indices] #these better match
-        #initial_dat_len = len(initial_dat)
-        #print(" Length of initial grid file:",initial_dat_len)
     else:
         for eos in eos_data: #find max available file length
             length = len(eos_data[eos])
@@ -316,7 +309,8 @@ if opts.save_consolidation_table:
             file_out.write("{} unique; {} total: {} % of grid".format(len(dup_lines),tot_dup,(tot_dup/initial_dat_len)*100.))
         print(" Duplication report saved;",len(dup_lines),"unique reoccurring lines;",tot_dup,"duplicate lines total.")
     
-    #add lnLs for each file to dict
+    #add lnLs for each file to dict - THIS DOES NOT CORRECTLY HANDLE DUPLICATES
+    #saved lnLs will = last occurence of a duplicate line, so may not match across cols
     marg_col_tracker = 0
     for eos in eos_data:
         print("Tabulating eos data for:",eos)
