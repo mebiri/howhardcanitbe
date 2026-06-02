@@ -11,7 +11,8 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--using-eos', type=str, action='append',help="REQUIRED: Send eos file with [lnL, sigma_lnL, gamma0, gamma1, gamma2, gamma3, m1, m2, sig] as the parameters.")
+parser.add_argument('--marg-eos', type=str, action='append',help="REQUIRED: Send eos file with [lnL, sigma_lnL, gamma0, gamma1, gamma2, gamma3, m1, m2, sig] as the parameters.")
+parser.add_argument('--net-eos',type=str,default=None,help="consolidated_X.net_marg file for iteration")
 parser.add_argument('--save-consolidation-table',action='store_true',help="create & save table with all provided lnLs & EOSs, for comparison")
 parser.add_argument('--sum-marg',action='store_true',help="include column manually adding provided MARG lnLs together, to compare to CON file lnL in consolidation table")
 parser.add_argument('--input-grid',type=str,help="Grid file for iteration (EOS NEEDS TO MATCH) - helpful, more reliable, but not required")
@@ -21,8 +22,8 @@ parser.add_argument('--marges',default="PCN",type=str,help="Initials (IN ORDER) 
 
 opts = parser.parse_args()
 
-if len(opts.marges) != len(opts.using_eos):
-    print("ERROR: provided MARG list (--using-eos) must be same length as MARG IDs (--marges). Exiting.")
+if len(opts.marges) != len(opts.marg_eos):
+    print("ERROR: provided MARG list (--marg-eos) must be same length as MARG IDs (--marges). Exiting.")
     import sys
     sys.exit(0)
 
@@ -51,7 +52,11 @@ if eos_indices is None:
 
 
 #Process 0: identify provided files
-for e, eos in enumerate(opts.using_eos):
+if opts.net_eos:
+    cons_file = 1
+    opts.marg_eos.append(opts.net_eos) #haha! retroactive shortcut!
+
+for e, eos in enumerate(opts.marg_eos):
     fname = eos.replace('file:', '')
     
     filename=fname.split("/")[-1].split(".")[0]
@@ -62,7 +67,6 @@ for e, eos in enumerate(opts.using_eos):
             if iteration == "": 
                 iteration = filename[-1]
                 fail_report_name = "lnL_fail_report_"+iteration
-            cons_file = 1
             marges[filename] = ["CON",e,-1]
         elif len(filename) == 16:
             if opts.marges[e] == 'P': #PLE
