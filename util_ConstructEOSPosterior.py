@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/home/marc.ebiri/.conda/envs/testenv/bin/python3.10
 #
 #  util_ConstructEOSPosterior.py
 #     - takes in *generic-format* hyperparameter likelihood data
@@ -8,16 +8,16 @@
 # EXAMPLE:
 #   python `which util_ConstructEOSPosterior.py` --fname fake_int_grid.dat  --parameter gamma1 --parameter gamma2 --lnL-offset 50
 
-import RIFT.interpolators.BayesianLeastSquares as BayesianLeastSquares
+#import RIFT.interpolators.BayesianLeastSquares as BayesianLeastSquares
 
 import argparse
 import sys
 import numpy as np
 import numpy.lib.recfunctions
 import scipy
-import scipy.stats
-import functools
-import itertools
+#import scipy.stats
+#import functools
+#import itertools
 
 import joblib  # http://scikit-learn.org/stable/modules/model_persistence.html
 
@@ -30,15 +30,17 @@ no_plots = True
 internal_dtype = np.float32  # only use 32 bit storage! Factor of 2 memory savings for GP code in high dimensions
 
  
-try:
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
-    import matplotlib.lines as mlines
-    import corner
-
-    no_plots=False
-except ImportError:
-    print(" - no matplotlib - ")
+# =============================================================================
+# try:
+#     import matplotlib.pyplot as plt
+#     from mpl_toolkits.mplot3d import Axes3D
+#     import matplotlib.lines as mlines
+#     import corner
+# 
+#     no_plots=False
+# except ImportError:
+#     print(" - no matplotlib - ")
+# =============================================================================
 
 
 from sklearn.preprocessing import PolynomialFeatures
@@ -165,6 +167,9 @@ parser.add_argument("--tripwire-fraction",default=0.05,type=float,help="Fraction
 parser.add_argument("--supplementary-likelihood-factor-code", default=None,type=str,help="Import a module (in your pythonpath!) containing a supplementary factor for the likelihood.  Used to impose supplementary external priors of arbitrary complexity and external dependence (e.g., imposing alternate EOS priors)")
 parser.add_argument("--supplementary-likelihood-factor-function", default=None,type=str,help="With above option, specifies the specific function used as an external likelihood. EXPERTS ONLY")
 parser.add_argument("--supplementary-likelihood-factor-ini", default=None,type=str,help="With above option, specifies an ini file that is parsed (here) and passed to the preparation code, called when the module is first loaded, to configure the module. EXPERTS ONLY")
+parser.add_argument("--supplementary-coordinate-code", default=None,type=str,help="Coordinate conversion/prior code. Accepts: the literal 'rift_default' (use RIFT.lalsimutils.convert_waveform_coordinates plus RIFT-standard priors); a filesystem path ending in .py (loaded as a plugin); or any importable dotted module name.")
+parser.add_argument("--supplementary-coordinate-function", default=None, type=str, help="Name of the entry-point callable inside the module named by --supplementary-coordinate-code. Defaults to 'convert_coordinates'.")
+
 opts=  parser.parse_args()
 
 #print(" WARNING: Always use internal_use_lnL for now ")
@@ -206,7 +211,7 @@ test_converged={}
 ###
 #  int_sig sigma/L gamma1 gamma2 ...
 col_lnL = 0
-dat_orig = dat = np.loadtxt(opts.fname)
+dat_orig = dat = np.loadtxt(opts.fname) #all.net, same format as grid/consolidated files
 dat_orig = dat[dat[:,col_lnL].argsort()] # sort  http://stackoverflow.com/questions/2828059/sorting-arrays-in-numpy-by-column
 print(" Original data size = ", len(dat), dat.shape)
 dat_orig_names = None
@@ -219,17 +224,25 @@ dat_orig_names = header_str.replace('#','').split()[2:]
 ### Parameters in use
 ###
 
-coord_names = opts.parameter # Used  in fit
+#want: 
+    #if opts.parameter -> both fit & sampling
+    #if opts.param_implied -> just fit
+    #if opts.param_nofit -> just sampling
+    #if no opts.parameter -> coord_names & l_l_coord_names = dat_orig_names
+coord_names = opts.parameter # coords for both fit and MC sampling
 if coord_names is None:
     coord_names = dat_orig_names
-low_level_coord_names = coord_names # Used for Monte Carlo
+low_level_coord_names = coord_names # i.e., sampling coords same as data col coords
+
 if opts.parameter_implied:
-    coord_names = coord_names+opts.parameter_implied
+    coord_names = coord_names+opts.parameter_implied # coords for fit - wrong if opts.parameter=None
+
 if opts.parameter_nofit:
     if opts.parameter is None:
-        low_level_coord_names = opts.parameter_nofit # Used for Monte Carlo
+        low_level_coord_names = opts.parameter_nofit # coords for MC sampling
     else:
-        low_level_coord_names = opts.parameter+opts.parameter_nofit # Used for Monte Carlo
+        low_level_coord_names = opts.parameter+opts.parameter_nofit # coords for MC sampling
+
 error_factor = len(coord_names)
 name_index_dict ={}
 for name in dat_orig_names:
@@ -282,15 +295,155 @@ prior_range_map = param_ranges
 # prior_range_map = { 'gamma1':  [0.707899,1.31], 'gamma2':[-1.6,1.7], 'gamma3':[-0.6,0.6], 'gamma4':[-0.02,0.02]
 # }
 
-#supplemental code deleted - not used currently
+
+###
+### Supplemental likelihood: load (as in ILE)
+###
+supplemental_ln_likelihood= None
+supplemental_ln_likelihood_prep =None
+supplemental_ln_likelihood_parsed_ini=None
+# Supplemental likelihood factor. Must have identical call sequence to 'likelihood_function'. Called with identical raw inputs (including cosines/etc)
+if opts.supplementary_likelihood_factor_code and opts.supplementary_likelihood_factor_function:
+  print(" EXTERNAL SUPPLEMENTARY LIKELIHOOD FACTOR : {}.{} ".format(opts.supplementary_likelihood_factor_code,opts.supplementary_likelihood_factor_function))
+  __import__(opts.supplementary_likelihood_factor_code)
+  external_likelihood_module = sys.modules[opts.supplementary_likelihood_factor_code]
+  supplemental_ln_likelihood = getattr(external_likelihood_module,opts.supplementary_likelihood_factor_function)
+  name_prep = "prepare_"+opts.supplementary_likelihood_factor_function
+  if hasattr(external_likelihood_module,name_prep):
+    supplemental_ln_likelhood_prep=getattr(external_likelihood_module,name_prep)
+    # Check for and load in ini file associated with external library
+    if opts.supplementary_likelihood_factor_ini:
+      import configparser as ConfigParser
+      config = ConfigParser.ConfigParser()
+      config.optionxform=str # force preserve case! 
+      config.read(opts.supplementary_likelihood_factor_ini)
+      supplemental_ln_likelhood_parsed_ini=config
+
+      # Call the ini file, tell it what coordinates we are using by name
+      supplemental_ln_likelihood_prep(config=supplemental_ln_likelihood_parsed_ini,coords=coord_names)
+  
+              
+supplemental_coordinate_convert = None
+supplemental_coordinate_invert = None
+if opts.supplementary_coordinate_code and opts.supplementary_coordinate_function:
+    ''' 
+    The robot wants: The loader accepts three forms in --supplementary-coordinate-code: 
+        -the literal 'rift_default', 
+        -a filesystem path to a .py file, or
+        -an importable dotted module name.  
+    The plugin must expose a callable named by --supplementary-coordinate-function
+    with args (x_in, coord_names, low_level_coord_names, **kwargs) that returns 
+    a 2-D ndarray of shape (N, len(coord_names)). 
+    Robot supposedly wants to allow an optional prepare() (one-shot setup, gets 
+    the parsed ini and active coord_name lists) and a register_priors() (mutate 
+    prior_map in place) - see RIFT.misc.coordinate_plugin. I don't care for this.
+    '''
+    print(" EXTERNAL COORDINATE CONVERSION : {}.{} ".format(opts.supplementary_coordinate_code,opts.supplementary_coordinate_function))
+    __import__(opts.supplementary_coordinate_code)
+    external_coordinate_module = sys.modules[opts.supplementary_coordinate_code]
+    if hasattr(external_coordinate_module,opts.supplementary_coordinate_function):
+        supplemental_coordinate_convert = getattr(external_coordinate_module,opts.supplementary_coordinate_function)
+    
+        if coord_names == low_level_coord_names: #no param_implied or param_nofit
+            print(" All parameters match; assuming full conversion & requiring inverted conversion.")
+            try:
+                supplemental_coordinate_invert = getattr(external_coordinate_module, "inverse_"+opts.supplementary_coordinate_function)
+            except:
+                print(" ERROR: no inverted coordinate conversion routine found!")
+                supplemental_coordinate_invert = None
+        # Send X to get converted, get converted X back -> do this later
+    else:
+        print("ERROR: could not retrieve supplied coordinate function. Will attempt default conversion (none).")
+    
 
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel as C
 
-def adderr(y):#unused, seemingly
+def adderr(y):
     val,err = y
     return val+error_factor*err
+
+def fit_gp(x,y,x0=None,symmetry_list=None,y_errors=None,hypercube_rescale=False,fname_export="gp_fit"):
+    """
+    x = array so x[0] , x[1], x[2] are points.
+    """
+
+    # If we are loading a fit, override everything else
+    if opts.fit_load_gp:
+        print(" WARNING: Do not re-use fits across architectures or versions : pickling is not transferrable ")
+        my_gp=joblib.load(opts.fit_load_gp)
+        return lambda x:my_gp.predict(x)
+
+    # Amplitude: 
+    #   - We are fitting lnL.  
+    #   - We know the scale more or less: more than 2 in the log is bad
+    # Scale
+    #   - because of strong correlations with chirp mass, the length scales can be very short
+    #   - they are rarely very long, but at high mass can be long
+    #   - I need to allow for a RANGE
+
+    length_scale_est = []
+    length_scale_bounds_est = []
+    for indx in np.arange(len(x[0])):
+        # These length scales have been tuned by expereience
+        length_scale_est.append( 2*np.std(x[:,indx])  )  # auto-select range based on sampling retained
+        length_scale_min_here= np.max([1e-3,0.2*np.std(x[:,indx]/np.sqrt(len(x)))])
+        length_scale_bounds_est.append( (length_scale_min_here , 5*np.std(x[:,indx])   ) )  # auto-select range based on sampling *RETAINED* (i.e., passing cut).  Note that for the coordinates I usually use, it would be nonsensical to make the range in coordinate too small, as can occasionally happens
+
+    print(" GP: Input sample size ", len(x), len(y))
+    print(" GP: Estimated length scales ")
+    print(length_scale_est)
+    print(length_scale_bounds_est)
+
+    if not (hypercube_rescale):
+        # These parameters have been hand-tuned by experience to try to set to levels comparable to typical lnL Monte Carlo error
+        kernel = WhiteKernel(noise_level=0.1,noise_level_bounds=(1e-2,1))+C(0.5, (1e-3,1e1))*RBF(length_scale=length_scale_est, length_scale_bounds=length_scale_bounds_est)
+        gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=8)
+
+        gp.fit(x,y)
+
+        print(" Fit: std: ", np.std(y - gp.predict(x)),  "using number of features ", len(y))
+
+        if opts.fit_save_gp:
+            print(" Attempting to save fit ", opts.fit_save_gp+".pkl")
+            joblib.dump(gp,opts.fit_save_gp+".pkl")
+        
+        return lambda x: gp.predict(x)
+    else:
+        x_scaled = np.zeros(x.shape)
+        x_center = np.zeros(len(length_scale_est))
+        x_center = np.mean(x)
+        print(" Scaling data to central point ", x_center)
+        for indx in np.arange(len(x)):
+            x_scaled[indx] = (x[indx] - x_center)/length_scale_est # resize
+
+        kernel = WhiteKernel(noise_level=0.1,noise_level_bounds=(1e-2,1))+C(0.5, (1e-3,1e1))*RBF( len(x_center), (1e-3,1e1))
+        gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=8)
+        
+        gp.fit(x_scaled,y)
+        print(" Fit: std: ", np.std(y - gp.predict(x_scaled)),  "using number of features ", len(y))  # should NOT be perfect
+
+        return lambda x,x0=x_center,scl=length_scale_est: gp.predict( (x-x0 )/scl)
+
+def map_funcs(func_list,obj):
+    return [func(obj) for func in func_list]
+def fit_gp_pool(x,y,n_pool=10,**kwargs):
+    """
+    Split the data into 10 parts, and return a GP that averages them
+    """
+    x_copy = np.array(x)
+    y_copy = np.array(y)
+    indx_list =np.arange(len(x_copy))
+    np.random.shuffle(indx_list) # acts in place
+    partition_list = np.array_split(indx_list,n_pool)
+    gp_fit_list =[]
+    for part in partition_list:
+        print(" Fitting partition ")
+        gp_fit_list.append(fit_gp(x[part],y[part],**kwargs))
+    fn_out =  lambda x: np.mean( map_funcs( gp_fit_list,x), axis=0)
+    print(" Testing ", fn_out([x[0]]))
+    return fn_out
 
 
 def fit_rf(x,y,y_errors=None,fname_export='nn_fit'):
@@ -335,24 +488,68 @@ n_params = -1
  ###
  ### Convert data.   RIGHT NOW JUST DOWNSELECTING, no intermediate fitting parameters defined
  ###
-
-dat_out = []
-for line in dat:
-  dat_here= np.zeros(len(coord_names)+2)
-  if line[col_lnL+1] > opts.sigma_cut:
-      print("skipping", line)
-      continue
-  dat_here[:-2] = line[2:len(coord_names)+2]  # modify to use names!
-  dat_here[-2] = line[0]
-  dat_here[-1] = line[1]
-  dat_out.append(dat_here)
-dat_out= np.array(dat_out)
-# Repack data
-X =dat_out[:,0:len(coord_names)]
-Y = dat_out[:,-2]
-if np.max(Y)<0 and lnL_shift ==0: 
-    lnL_shift  = -100 - np.max(Y)   # force it to be offset/positive -- may help some configurations. Remember our adaptivity is silly.
-Y_err = dat_out[:,-1]
+ 
+# Naive convert: no downselect.
+if supplemental_coordinate_convert is None:
+    #old functionality
+    if list(low_level_coord_names) != list(coord_names):
+        raise ValueError(" ERROR: fit basis ({}) differs from MC sampling basis ({}), but no --supplementary-coordinate-code was supplied.".format(list(coord_names),list(low_level_coord_names)))
+    
+    indx_of_orig_names =  np.array([ dat_orig_names.index(coord_names[k]) for k in range(len(coord_names))])
+    
+    dat_out = []
+    for line in dat:
+      dat_here= np.zeros(len(coord_names)+2)
+      if line[col_lnL+1] > opts.sigma_cut:
+          print("skipping", line)
+          continue
+      dat_here[:-2] = line[indx_of_orig_names+2]#line[2:len(coord_names)+2]  # modify to use names!
+      dat_here[-2] = line[0]
+      dat_here[-1] = line[1]
+      dat_out.append(dat_here)
+    dat_out= np.array(dat_out)
+    
+    # Repack data #TODO: check this, move outside if block if both routes need it!
+    X =dat_out[:,0:len(coord_names)]
+    Y = dat_out[:,-2]
+    if np.max(Y)<0 and lnL_shift ==0: 
+        lnL_shift  = -100 - np.max(Y)   # force it to be offset/positive -- may help some configurations. Remember our adaptivity is silly.
+    Y_err = dat_out[:,-1]
+    def convert_coords(x): #no conversion in play here
+        return x
+else:
+    # Pack data using coordinate converter. Note, if not fully operating in other coord sys.
+    #later calculations MUST use the converter.
+    '''
+    # The robot says: Two distinct call sites for the converter, with two different
+    # input bases -- this is the change that decouples the fit from
+    # the MC sampling basis:
+    #   (1) The initial dat->X conversion below feeds rows whose
+    #       columns are ordered by dat_orig_names (the data file's
+    #       header).  So we pass low_level_coord_names=dat_orig_names
+    #       at this site.
+    #   (2) The convert_coords def is called by the integrator on every MC 
+            sample (like CIP).  The sampler operates in low_level_coord_names, 
+            so the def must claim its inputs are in low_level_coord_names, NOT 
+            dat_orig_names.  
+            Used to be hardcoded to dat_orig_names, which worked in legacy 
+            case (low_level_coord_names == dat_orig_names). For any non-trivial 
+            plugin where the MC samples in a different basis than the file cols,
+    #       the old behaviour applied the rotation an extra time, which is wrong.
+    '''
+    X = supplemental_coordinate_convert(dat[:,2:], coord_names=coord_names, low_level_coord_names=dat_orig_names) # convert and generate X
+    Y = dat[:,0]
+    Y_err = dat[:,1]
+    if np.max(Y)<0 and lnL_shift ==0:
+        lnL_shift  = -100 - np.max(Y)   # force it to be offset/positive -- may help some configurations. Remember our adaptivity is silly.
+    if supplemental_coordinate_invert is None:
+        def convert_coords(x_in, _low=low_level_coord_names, _coord=coord_names):
+            # _low / _coord captured as defaults so the closure stays correct even if either list mutates later in the script.
+            return supplemental_coordinate_convert(x_in, coord_names=_coord, low_level_coord_names=_low)
+    else: #doing everything in converted coords, so no need to convert again
+        def convert_coords(x):
+            return x
+        
 # Save copies for later (plots)
 X_orig = X.copy()
 Y_orig = Y.copy()
@@ -383,7 +580,24 @@ elif n_ok < 10: # and max_lnL > 30:
 X_raw = X.copy()
 
 my_fit= None
-if opts.fit_method == 'rf':
+if opts.fit_method =='gp':
+    print(" FIT METHOD : GP")
+    # some data truncation IS used for the GP, but beware
+    print(" Truncating data set used for GP, to reduce memory usage needed in matrix operations")
+    X=X[indx_ok]
+    Y=Y[indx_ok] - lnL_shift
+    Y_err = Y_err[indx_ok]
+    # Cap the total number of points retained, AFTER the threshold cut
+    if opts.cap_points< len(Y) and opts.cap_points> 100:
+        n_keep = opts.cap_points
+        indx = np.random.choice(np.arange(len(Y)),size=n_keep,replace=False)
+        Y=Y[indx]
+        X=X[indx]
+        Y_err=Y_err[indx]
+    if opts.ignore_errors_in_data:
+        Y_err=None
+    my_fit = fit_gp(X,Y,y_errors=Y_err)
+elif opts.fit_method == 'rf':
     print( " FIT METHOD ", opts.fit_method, " IS RF ")
     # NO data truncation for NN needed?  To be *consistent*, have the code function the same way as the others
     X=X[indx_ok]
@@ -414,93 +628,133 @@ Y=Y[indx]
 
 
 sampler = mcsampler.MCSampler()
+if opts.sampler_method == "adaptive_cartesian_gpu":
+    sampler = mcsamplerGPU.MCSampler()
+    sampler.xpy = xpy_default
+    sampler.identity_convert=identity_convert
+    mcsampler  = mcsamplerGPU  # force use of routines in that file, for properly configured GPU-accelerated code as needed
 
-#if opts.sampler_method == "GMM":
-    #sampler = mcsamplerEnsemble.MCSampler()
-if opts.sampler_method == "AV":
-    print("Sampler method is AV")
+    # if opts.sampler_xpy == "numpy":
+    #   mcsampler.set_xpy_to_numpy()
+    #   sampler.xpy= numpy
+    #   sampler.identity_convert= lambda x: x
+if opts.sampler_method == "GMM":
+    sampler = mcsamplerEnsemble.MCSampler()
+elif opts.sampler_method == "AV":
     sampler = mcsamplerAdaptiveVolume.MCSampler()
     opts.internal_use_lnL= True  # required!
-
+elif opts.sampler_method == "portfolio":
+    use_portfolio=True
+    sampler = None
+    sampler_list = []
+    sampler_types = opts.sampler_portfolio
+    for name in sampler_types:
+        if name =='AV':
+            sampler = mcsamplerAdaptiveVolume.MCSampler()
+        if name =='GMM':
+            sampler = mcsamplerEnsemble.MCSampler()
+            opts.sampler_method = 'GMM'  # this will force the creation/parsing of GMM-specific arguments below, so they are properly passed
+        if name == "adaptive_cartesian_gpu":
+            sampler = mcsamplerGPU.MCSampler()
+            sampler.xpy = xpy_default
+            sampler.identity_convert=identity_convert
+        if name == 'NFlow':
+            # expensive import, only do if requested
+            try:
+                import RIFT.integrators.mcsamplerNFlow as mcsamplerNFlow
+                mcsampler_NF_ok = True
+            except:
+                print(" No mcsamplerNFlow ")
+                continue
+            sampler = mcsamplerNFlow.MCSampler()
+            sampler.xpy = xpy_default
+            sampler.identity_convert=identity_convert
+        if sampler is None:
+            # Don't add unknown type
+            continue
+        print('PORTFOLIO: adding {} '.format(name))
+        sampler_list.append(sampler)
+    sampler = mcsamplerPortfolio.MCSampler(portfolio=sampler_list)
 
 
 ##
 ## Loop over param names
 ##
-for p in coord_names:
+#iterate over low_level_coord_names (sampler basis), not coord_names (fit basis)
+#In legacy case the lists are equal so it doesn't matter
+for p in low_level_coord_names:
     prior_here = prior_map[p]
     range_here = prior_range_map[p]
-    
-    print("Paramter",p,"added to sampler.")
+
     sampler.add_parameter(p, pdf=np.vectorize(lambda x:1), prior_pdf=prior_here,left_limit=range_here[0],right_limit=range_here[1],adaptive_sampling=True)
 
 likelihood_function = None
 log_likelihood_function = None
-def convert_coords(x):
-    return x
+#def convert_coords(x):
+#    return x
 def log_likelihood_function(*args):
     return my_fit(convert_coords(np.array([*args]).T ))
 
-if len(coord_names) ==1:
+if len(low_level_coord_names) ==1:
     def likelihood_function(x):  
         if isinstance(x,float):
             return np.exp(my_fit([x]))
         else:
             return np.exp(my_fit(convert_coords(np.c_[x])))
-if len(coord_names) ==2:
+if len(low_level_coord_names) ==2:
     def likelihood_function(x,y):  
         if isinstance(x,float):
             return np.exp(my_fit([x,y]))
         else:
 #            return np.exp(my_fit(convert_coords(np.array([x,y],dtype=internal_dtype).T)))
             return np.exp(my_fit(convert_coords(np.c_[x,y])))
-if len(coord_names) ==3:
+if len(low_level_coord_names) ==3:
     def likelihood_function(x,y,z):  
         if isinstance(x,float):
             return np.exp(my_fit([x,y,z]))
         else:
 #            return np.exp(my_fit(convert_coords(np.array([x,y,z],dtype=internal_dtype).T)))
             return np.exp(my_fit(convert_coords(np.c_[x,y,z])))
-if len(coord_names) ==4:
+if len(low_level_coord_names) ==4:
     def likelihood_function(x,y,z,a):  
         if isinstance(x,float):
             return np.exp(my_fit([x,y,z,a]))
         else:
 #            return np.exp(my_fit(convert_coords(np.array([x,y,z,a],dtype=internal_dtype).T)))
             return np.exp(my_fit(convert_coords(np.c_[x,y,z,a])))
-if len(coord_names) ==5:
+if len(low_level_coord_names) ==5:
     def likelihood_function(x,y,z,a,b):  
         if isinstance(x,float):
             return np.exp(my_fit([x,y,z,a,b]))
         else:
 #            return np.exp(my_fit(convert_coords(np.array([x,y,z,a,b],dtype=internal_dtype).T)))
             return np.exp(my_fit(convert_coords(np.c_[x,y,z,a,b])))
-if len(coord_names) ==6:
+if len(low_level_coord_names) ==6:
     def likelihood_function(x,y,z,a,b,c):  
         if isinstance(x,float):
             return np.exp(my_fit([x,y,z,a,b,c]))
         else:
 #            return np.exp(my_fit(convert_coords(np.array([x,y,z,a,b,c],dtype=internal_dtype).T)))
             return np.exp(my_fit(convert_coords(np.c_[x,y,z,a,b,c])))
-if len(coord_names) ==7:
+if len(low_level_coord_names) ==7:
     def likelihood_function(x,y,z,a,b,c,d):  
         if isinstance(x,float):
             return np.exp(my_fit([x,y,z,a,b,c,d]))
         else:
             return np.exp(my_fit(convert_coords(np.c_[x,y,z,a,b,c,d])))
-if len(coord_names) ==8:
+if len(low_level_coord_names) ==8:
     def likelihood_function(x,y,z,a,b,c,d,e):  
         if isinstance(x,float):
             return np.exp(my_fit([x,y,z,a,b,c,d,e]))
         else:
             return np.exp(my_fit(convert_coords(np.c_[x,y,z,a,b,c,d,e])))
-if len(coord_names) ==9:
+if len(low_level_coord_names) ==9:
     def likelihood_function(x,y,z,a,b,c,d,e,f):  
         if isinstance(x,float):
             return np.exp(my_fit([x,y,z,a,b,c,d,e,f]))
         else:
             return np.exp(my_fit(convert_coords(np.c_[x,y,z,a,b,c,d,e,f])))
-if len(coord_names) ==10:
+if len(low_level_coord_names) ==10:
     def likelihood_function(x,y,z,a,b,c,d,e,f,g):  
         if isinstance(x,float):
             return np.exp(my_fit([x,y,z,a,b,c,d,e,f,g]))
@@ -519,7 +773,44 @@ print(" Weight exponent ", my_exp, " and peak contrast (exp)*lnL = ", my_exp*np.
 
 
 extra_args={}
-
+if opts.sampler_method == "GMM":
+    n_max_blocks = ((1.0*int(opts.n_max))/n_step) 
+    n_comp = opts.internal_n_comp # default
+    def parse_corr_params(my_str):
+        """
+        Takes a string with no spaces, and returns a tuple
+        """
+        corr_param_names = my_str.replace(',',' ').split()
+        corr_param_indexes = []
+        for param in corr_param_names:
+            try:
+                indx = low_level_coord_names.index(param)
+                corr_param_indexes.append(indx)
+            except:
+                continue
+        return tuple(corr_param_indexes)
+    if opts.internal_correlate_parameters == 'all':
+        gmm_dict = {tuple(range(len(low_level_coord_names))):None} # integrate *jointly* in all parameters together
+    elif not (opts.internal_correlate_parameters is None):
+        # Correlate identified parameters
+        my_blocks = opts.internal_correlate_parameters.split()
+        my_tuples = list(map( parse_corr_params, my_blocks))
+        gmm_dict = {x:None for x in my_tuples}
+        print(" GMM: Proposed correlated ", gmm_dict)
+        # What about un-labelled parameters? Make a null tuple for them as well
+        correlated_params = set(); correlated_params = correlated_params.union( *list(map(set,my_tuples)))
+        uncorrelated_params = set(np.arange(len(low_level_coord_names))); 
+        uncorrelated_params = uncorrelated_params.difference(correlated_params)
+        for x in uncorrelated_params:
+            gmm_dict[(x,)] = None
+        print( " Using correlated GMM sampling on sampling variable indexes " , gmm_dict, " out of ", low_level_coord_names)
+    else:
+        param_indexes = range(len(low_level_coord_names))
+        gmm_dict  = {(k,):None for k in param_indexes} # no correlations
+#    lnL_offset_saving = opts.lnL_offset
+    lnL_offset_saving = -20  # for simplicity, hardcode for now for preserving points
+    print("GMM ", gmm_dict)
+    extra_args = {'n_comp':n_comp,'max_iter':n_max_blocks,'L_cutoff': None,'gmm_dict':gmm_dict,'max_err':50, 'lnw_failure_cut':-np.inf}  # made up for now, should adjust
 extra_args.update({
     "n_adapt": 100, # Number of chunks to allow adaption over
     "history_mult": 10, # Multiplier on 'n' - number of samples to estimate marginalized 1D histograms with, 
@@ -528,21 +819,21 @@ extra_args.update({
 })
 
 fn_passed = likelihood_function
-#if supplemental_ln_likelihood:
-#    fn_passed =  lambda *x: likelihood_function(*x)*np.exp(supplemental_ln_likelihood(*x))
+if supplemental_ln_likelihood:
+    fn_passed =  lambda *x: likelihood_function(*x)*np.exp(supplemental_ln_likelihood(*x))
 if opts.internal_use_lnL:
     fn_passed = log_likelihood_function   # helps regularize large values
-    #if supplemental_ln_likelihood:
-    #    fn_passed =  lambda *x: log_likelihood_function(*x) + supplemental_ln_likelihood(*x)
+    if supplemental_ln_likelihood:
+        fn_passed =  lambda *x: log_likelihood_function(*x) + supplemental_ln_likelihood(*x)
     extra_args.update({"use_lnL":True,"return_lnI":True})
 
 
-print("Integral here.")
-res, var, neff, dict_return = sampler.integrate(fn_passed, *coord_names,  verbose=True,nmax=int(opts.n_max),n=n_step,neff=opts.n_eff, save_intg=True,tempering_adapt=True, floor_level=1e-3,igrand_threshold_p=1e-3,convergence_tests=test_converged,adapt_weight_exponent=my_exp,no_protect_names=True,**extra_args)  # weight ecponent needs better choice. We are using arbitrary-name functions
+
+res, var, neff, dict_return = sampler.integrate(fn_passed, *low_level_coord_names,  verbose=True,nmax=int(opts.n_max),n=n_step,neff=opts.n_eff, save_intg=True,tempering_adapt=True, floor_level=1e-3,igrand_threshold_p=1e-3,convergence_tests=test_converged,adapt_weight_exponent=my_exp,no_protect_names=True,**extra_args)  # weight ecponent needs better choice. We are using arbitrary-name functions
 
 
 # Save result -- needed for odds ratios, etc.
-np.savetxt("integral_result.dat", [np.log(res)])
+np.savetxt(opts.fname_output_integral+"_result.txt", [np.log(res)])
 
 if neff < len(coord_names):
     print(" PLOTS WILL FAIL ")
@@ -551,8 +842,8 @@ if neff < len(coord_names):
 
 samples = sampler._rvs
 print(samples.keys())
-n_params = len(coord_names)
-dat_mass = np.zeros((len(samples[coord_names[0]]),n_params+3))
+n_params = len(low_level_coord_names)
+dat_mass = np.zeros((len(samples[low_level_coord_names[0]]),n_params+3))
 if not(opts.internal_use_lnL):
     dat_logL = np.log(samples["integrand"])
 else:
@@ -583,7 +874,7 @@ indx_ok = np.ones(len(dat_logL),dtype=bool)
 if not('log_joint_s_prior' in samples):
     indx_ok=samples["joint_s_prior"]>0
 indx_ok = np.logical_and(dat_logL > np.max(dat_logL)-opts.lnL_offset ,indx_ok)
-for p in coord_names:
+for p in low_level_coord_names:
     samples[p] = samples[p][indx_ok]
 dat_logL  = dat_logL[indx_ok]
 print(samples.keys())
@@ -613,7 +904,7 @@ indx_list = np.random.choice(np.arange(len(weights)), p=p_norm.astype(np.float64
 
 dat_out = np.zeros( (opts.n_output_samples,2+len(dat_orig_names)) )
 
-if len(coord_names) < len(dat_orig_names): # not needed if all params are in fit
+if len(low_level_coord_names) < len(dat_orig_names): # not needed if all params are in fit/sampled
 
     if len(dat) < opts.n_output_samples:
         print(" NOTE: original data shorter than  requested output; adding",opts.n_output_samples-len(dat),"duplicate fill lines from original data.")
@@ -630,31 +921,44 @@ if len(coord_names) < len(dat_orig_names): # not needed if all params are in fit
         dat = np.concatenate((dat,newlines), axis=0) #should be fine since dat isn't used after this
 
     for c in np.arange(len(dat_orig_names)):
-        if dat_orig_names[c] not in coord_names:
-            print("  Not in coord_names:",dat_orig_names[c],"; adding to output as constant.")
+        if dat_orig_names[c] not in low_level_coord_names:
+            print("  Not sampled:",dat_orig_names[c],"; adding to output as constant.")
             outidx = name_index_dict[dat_orig_names[c]]   # write in correct place
             if len(dat) > opts.n_output_samples:
                 dat_out[:,outidx] = dat[:opts.n_output_samples,outidx] #truncate original data to fit (not ideal)
             else: #len(dat) <= n_output_samples (if dat was <, should now be =)
                 dat_out[:,outidx] = dat[:,outidx]
-                
-for indx in np.arange(len(coord_names)):
-    vals = samples[coord_names[indx]][indx_list]   # load in data for this column
-    outindx = name_index_dict[ coord_names[indx]]   # write in correct place
-    dat_out[:,outindx] = vals
+
+#write out
+#if not supplemental_coordinate_invert:
+for name in low_level_coord_names:
+    if name not in name_index_dict:
+        print("  Sampled coord {!r} is not a data-file column; not writing to output (would only appear in corner plots).".format(name))
+        continue
+    outindx = name_index_dict[name]
+    dat_out[:, outindx] = samples[name][indx_list]
+
+#for indx in np.arange(len(low_level_coord_names)):
+#    vals = samples[low_level_coord_names[indx]][indx_list]   # load in data for this column
+#    outindx = name_index_dict[low_level_coord_names[indx]]   # write in correct place
+#    dat_out[:,outindx] = vals
+
+if supplemental_coordinate_invert:
+    #re-convert
+    dat_out[:,2:] = supplemental_coordinate_invert(dat_out[:,2:], coord_names=coord_names, low_level_coord_names=dat_orig_names)
 
 #If one of the masses carried as const, re-sort to enforce m1 > m2
-if ("m1" not in coord_names) or ("m2" not in coord_names):
-    print(" NOTE: re-sorting masses so m1 > m2 (precaution)")
-    m1dx = name_index_dict["m1"]
-    print("Minimum m1 (pre-sort):",min(dat_out[:,m1dx]))
-    print("Minimum m2 (pre-sort):",min(dat_out[:,m1dx+1]))
-    m1 = np.maximum(dat_out[:,m1dx], dat_out[:,m1dx+1]) #N.B.: assumes m2 col index after m1 col
-    m2 = np.minimum(dat_out[:,m1dx], dat_out[:,m1dx+1])
-    dat_out[:,m1dx] = m1
-    dat_out[:,m1dx+1] = m2
-    print("Minimum m1 (post-sort):",min(dat_out[:,m1dx]))
-    print("Minimum m2 (post-sort):",min(dat_out[:,m1dx+1]))
+#if ("m1" not in coord_names) or ("m2" not in coord_names):
+#    print("NOTE: re-sorting masses so m1 > m2 (precaution)")
+#    m1dx = name_index_dict["m1"]
+#    print("Minimum m1 (pre-sort):",min(dat_out[:,m1dx]))
+#    print("Minimum m2 (pre-sort):",min(dat_out[:,m1dx+1]))
+#    m1 = np.maximum(dat_out[:,m1dx], dat_out[:,m1dx+1]) #N.B.: assumes m2 col index after m1 col
+#    m2 = np.minimum(dat_out[:,m1dx], dat_out[:,m1dx+1])
+#    dat_out[:,m1dx] = m1
+#    dat_out[:,m1dx+1] = m2
+#    print("Minimum m1 (post-sort):",min(dat_out[:,m1dx]))
+#    print("Minimum m2 (post-sort):",min(dat_out[:,m1dx+1]))
 
 print(" Saving to ", opts.fname_output_samples+".dat")
 np.savetxt(opts.fname_output_samples+".dat",dat_out,header=" lnL sigma_lnL " + ' '.join(dat_orig_names))
