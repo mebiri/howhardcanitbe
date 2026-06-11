@@ -1,50 +1,39 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Apr  7 02:00:39 2026
-
-@author: marce
-"""
-
-#make an eos? plz?
-
 #! /usr/bin/env python
 
-import numpy as np
-import argparse
-#import RIFT.plot_utilities.EOSPlotUtilities as eosplot
-
-# Author: Askold Vilkha (https://github.com/askoldvilkha), av7683@rit.edu, askoldvilkha@gmail.com
+'''
+Adapted from Askold Vilkha's code for plotting tabular EOS inference results.
+(https://github.com/askoldvilkha, av7683@rit.edu, askoldvilkha@gmail.com)
+This version plots for regular spectral EOS, not tabular.
+It also supersedes the RIFT.plot_utilities.EOSPlotUtilities code, reusing and
+improving it locally. 
 
 # This script is used to plot the results of the tabular EOS inference. 
 # Minimal input is the path to the tabular EOS file and posterior samples files the user wants to have on the plot.
 # The user will have to specify which plots to make by setting the corresponding flags to True.
 # The script has a functionality to choose custom labels and colors for the posterior samples.
 # If multiple tabular EOS files are provided, the user will have to specify which ones to plot and to use for the posterior samples.
-
-#import matplotlib.pyplot as plt
-import RIFT.physics.EOSManager as EOSManager
-#from natsort import natsorted
+'''
+import numpy as np
+import argparse
 import warnings
 import sys
-
 import ast
 import textwrap
 
+import RIFT.physics.EOSManager as EOSManager
 import RIFT.plot_utilities.TabularEOSPlotUtilities as tabplot
-#import RIFT.plot_utilities.EOSPlotUtilities as eosplot
+import RIFT.plot_utilities.EOSPlotUtilities as eosplot
 import lalsimulation as lalsim
 
 try:
-    import matplotlib
+    import matplotlib #super slow import
     print(" Matplotlib backend ", matplotlib.get_backend())
     if matplotlib.get_backend() == 'agg':
-        fig_extension = '.png'
-        bNoInteractivePlots=True
+        pass
     else:
         matplotlib.use('agg')
-        fig_extension = '.png'
-        bNoInteractivePlots =True
-    from matplotlib import pyplot as plt
+    fig_extension = '.png'
+    bNoInteractivePlots =True
     bNoPlots=False
 except:
     print(" Error setting backend")
@@ -54,19 +43,32 @@ import matplotlib.pyplot as plt
 parser = argparse.ArgumentParser()#description = argparse_help_dict['help'])
 
 # basic arguments
-parser.add_argument('--eos-file', action = 'append')#, help = argparse_help_dict['tabular-eos-file'], required = True)
+parser.add_argument('--eos-file', action = 'append',help='Just provide one, the rest will be ignored')#, help = argparse_help_dict['tabular-eos-file'], required = True)
 parser.add_argument('--num-eos',default=1,type=int,help="Number of lines of posterior file to plot EOS curves for (starts at 0)")
+#parser.add_argument('--posterior-file', action = 'append', help = 'Path to the posterior samples file(s). If none are provdided, only priors will be plotted.')
+parser.add_argument('--plot-p-vs-rho', action = 'store_true', help = 'Plot pressure vs. density')
+parser.add_argument('--plot-m-vs-r', action = 'store_true', help = 'Plot mass vs. radius')
+parser.add_argument('--tabular-eos-label', action = 'append', help = 'Label for the tabular EOS file')
+parser.add_argument('--posterior-label', action = 'append', help = 'Label for the posterior samples file')
+parser.add_argument('--color', action = 'append', help = 'Colors for the plot. If not provided, colors will be chosen automatically')
+parser.add_argument('--use-bgcgb-colormap', action = 'store_true', help = 'Use the BlackGreyCyanGreenBlue colormap for the plots')
+parser.add_argument('--verbose', action = 'store_true', help = 'Print information on the progress of the code')
+parser.add_argument('--plot-p-vs-rho-title', action = 'store', help = 'Title for the pressure vs. density plot')
+parser.add_argument('--plot-m-vs-r-title', action = 'store', help = 'Title for the mass vs. radius plot')
+parser.add_argument('--render-eos-objects',action='store_true',help='I do not know what this was for')
+parser.add_argument('--render-eos-files',action='store_true',help='!! Always use this with posterior files !!')
+
 
 opts = parser.parse_args()
 
 posterior_header = None
 #NOTE: ONLY THESE EOS_PARAMS HANDLED CURRENTLY: spectral, cs_spectral, PP
-def generate_eos(eos_line, eos_headers, eos_param="spectral",save_header=True):
-    print("Creating EOS object of type",eos_param,"using given data line.")
+def generate_eos(eos_line, eos_headers, eos_param="spectral",save_header=True,verbose=False):
+    if verbose: print("Creating EOS object of type",eos_param,"using given data line.")
     
     if eos_headers == posterior_header:
         eos_names = posterior_header
-        print("Relabeling EOS using existing headers:",eos_names) 
+        if verbose: print("Relabeling EOS using existing headers:",eos_names) 
     else:
         eos_names = eos_headers
         if ((eos_param == "spectral" or eos_param == "cs_spectral") and eos_names[0] != "gamma1") or (eos_param=="PP" and eos_names[1] != "gamma1"):
@@ -79,21 +81,16 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral",save_header=True):
                     eos_names[indx] = "gamma"+str(counter)
                 indx+=1
             print("Relabeled EOS headers:",eos_names)  
-            #TODO: may need to handle re-sorting for spectral types if g1 not first, as a precaution
-        
-    #Better than CIP, for sure...
+        if save_header:
+            global posterior_header
+            posterior_header = eos_names
+            
     spec_param_array = eos_line 
     spec_params ={}
 
     for i in range(len(eos_names)):
         spec_params[eos_names[i]]=spec_param_array[i]
-    #print("EOS data:\n",spec_params)
-    
-    #try: #test code
-    #    import RIFT.physics.EOSManager as EOSManager
-    #except:
-    #    print("-- ERROR: could not import EOSManager. --") #test code, only on local machine
-        #return None
+    if verbose: print("EOS data:\n",spec_params)
     
     eos_name="default_eos_name"
     eos_base = None
@@ -110,18 +107,44 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral",save_header=True):
         else:
             raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
     except Exception as e:
-        print("=====\n FAILSTATE 3: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
+        if verbose:
+            print("=====\n FAILSTATE 3: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
+        else:
+            print("=== EOS Creation Failed:",e,"===")
         #sys.exit(64) #special exit code for shell_wrapper_cip.sh to detect (hopefully)!
-        #print(" WARNING: RETURNED EOS OBJECT WILL BE",type(eos_base),"!\n=====")
         eos_base = None
     
     return eos_base
 
 
+#taken straight from EOSPlotUtilities
+def render_eos(eos, xvar='energy_density', yvar='pressure',units='cgs',npts=100,label=None,logscale=True,verbose=False,**kwargs):
+
+    min_pseudo_enthalpy = 0.005
+    max_pseudo_enthalpy = lalsim.SimNeutronStarEOSMaxPseudoEnthalpy(eos)
+    hvals = max_pseudo_enthalpy* 10**np.linspace( np.log10(min_pseudo_enthalpy/max_pseudo_enthalpy),  -1e-4,num=npts)
+    if verbose:
+        print(hvals,min_pseudo_enthalpy, max_pseudo_enthalpy)
+
+    qry = EOSManager.QueryLS_EOS(eos)
+
+    xvals = qry.extract_param(xvar,hvals)
+    yvals = qry.extract_param(yvar,hvals)
+    if verbose:
+        print(np.c_[xvals,yvals])
+        
+    
+    if logscale:
+        plt.loglog(xvals, yvals,label=label,**kwargs)
+    else:
+        plt.plot(xvals, yvals,label=label,**kwargs)
+    return None
+
+
 my_eos = None
 def initialize_one_eos():
     #This gets one line of data; it will also get the names for each column, after header:
-    dat = np.genfromtxt(opts.eos_file,names=True)[0]   # Parse file for them, to reduce need for burden parsing, and avoid burden/confusion.
+    dat = np.genfromtxt(opts.eos_file[0],names=True)[0]   # Parse file for them, to reduce need for burden parsing, and avoid burden/confusion.
     #all_params = np.loadtxt(opts.eos_file,names=True)[0]
     
     param_names = dat.dtype.names #separate out the names from the data
@@ -157,10 +180,11 @@ def initialize_one_eos():
         print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
         my_eos = None
 
+
 my_eos_list = None
 def initialize_eos():
-    #This gets one line of data; it will also get the names for each column, after header:
-    dat = np.genfromtxt(opts.eos_file,names=True)[opts.num_eos-1]
+    #This gets 1+ lines of data; it will also get the names for each column, after header:
+    dat = np.genfromtxt(opts.eos_file[0],names=True)[:opts.num_eos]
     param_names = dat.dtype.names #separate out the names from the data
     all_params = dat.view((float, len(param_names)))
     print(all_params[0])
@@ -182,73 +206,72 @@ def initialize_eos():
             j+=1
     
     global my_eos_list
+    my_eos_list = []
     if len(eos_names) > 0:
-        for i in len(eos_dat):
-            try:
-                my_eos = generate_eos(eos_dat[i], eos_names)
-                my_eos_list.append(my_eos)
-            except:
+        for i in np.arange(len(eos_dat)):
+            my_eos = generate_eos(eos_dat[i], eos_names)
+            if my_eos is None:
                 print("  eos line",i,"failed to generate.")
-                continue
+            else:
+                my_eos_list.append(my_eos)
     else:
-        print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
+        print("ERROR: No EOS columns found. Unable to create EOS object.")
         my_eos_list = None
+
 
 #my_eos = EOSManager.EOSLALSimulation('SLy')
 #eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
-
-def render_eos(eos, xvar='energy_density', yvar='pressure',units='cgs',npts=100,label=None,logscale=True,verbose=False,**kwargs):
-
-    min_pseudo_enthalpy = 0.005
-    max_pseudo_enthalpy = lalsim.SimNeutronStarEOSMaxPseudoEnthalpy(eos)
-    hvals = max_pseudo_enthalpy* 10**np.linspace( np.log10(min_pseudo_enthalpy/max_pseudo_enthalpy),  -1e-4,num=npts)
-    if verbose:
-        print(hvals,min_pseudo_enthalpy, max_pseudo_enthalpy)
-
-    qry = EOSManager.QueryLS_EOS(eos)
-
-    xvals = qry.extract_param(xvar,hvals)
-    yvals = qry.extract_param(yvar,hvals)
-    if verbose:
-        print(np.c_[xvals,yvals])
-        
+if opts.render_eos_objects: #maybe this was for loading pyr objects?
+    initialize_eos()
     
-    if logscale:
-        plt.loglog(xvals, yvals,label=label,**kwargs)
+    if my_eos_list is None:
+        print("All provided EOS parameters failed; exiting.")
+        sys.exit(0)
+    print("EOS list initialized; total:",len(my_eos_list))
+    
+    for e in my_eos_list:
+        render_eos(e.eos,'rest_mass_density', 'pressure')
+    print("All EOS rendered.")
+    
+elif opts.render_eos_files:
+    print("You bettah got my files, buddy.")
+    #use np.choice to render only --num-eos # of lines from file if len(file) > num-eos
+    initialize_eos()
+    
+    if my_eos_list is None:
+        print("ERROR: no valid EOSs could be created. Exiting.")
+        sys.exit(0)
     else:
-        plt.plot(xvals, yvals,label=label,**kwargs)
-    return None
-
-
-initialize_eos()
-
-if my_eos_list is None:
-    print("All provided EOS parameters failed; exiting.")
+        print("EOS list initialized; total:",len(my_eos_list))
+        density_grid = 10**np.linspace(14,16,100) #need to choose good range of densities
+        eosplot.render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True)
+    
+    
+    
+else:
+    print(" ERROR: no valid rendering option provided. Exiting.")
     sys.exit(0)
-print("EOS list initialized; total:",len(my_eos_list))
-
-#fig_base= None
-#fig_base = 
-for e in my_eos_list:
-    render_eos(e.eos,'rest_mass_density', 'pressure')
-print("All EOS rendered.")
 
 dpi_base=200
 res_base = 4*dpi_base
 plt.savefig("test_eos_plot"+fig_extension,dpi=res_base)
-print("Figure saved, supposedly.")
+print("EOS figure saved.")
 
 sys.exit(0)
+
+
+###############################################################################
+
 
 # store long help messages in a dictionary to avoid cluttering the parser code below
 argparse_help_dict = {
     'help': textwrap.dedent('''\
     This script is used to plot the results of non-tabular EOS inference obtained with RIFT or HyperPipe code.
-    The user can plot pressure vs. density and mass vs. radius plots for the EOS priors and posterior samples.
-    The user can specify the EOS files (?), posterior samples files, labels, and colors for the plots.
-    The user has to provide the path to the tabular EOS files and the posterior samples files.
+    The user can plot pressure vs. density and mass vs. radius plots for the EOS posterior samples.
+    The user can specify the EOS posterior samples files, labels, and colors for the plots.
+    The user has to provide the path to the posterior samples files.
     Basic usage: 
-    plot_tabular_eos_inference.py --tabular-eos-file <path_to_tabular_eos_file> --tabular-eos-label <tabular_eos_file_label> --posterior-file <path_to_posterior_samples_file> 
+    plot_tabular_eos_inference.py --eos-file <path_to_eos__posterior_file> --tabular-eos-label <tabular_eos_file_label> --posterior-file <path_to_posterior_samples_file> 
     --posterior-label <posterior_samples_file_label> --plot-p-vs-rho --plot-m-vs-r --use-bgcgb-colormap'''),
 
     'tabular-eos-file': textwrap.dedent('''\
@@ -279,16 +302,7 @@ parser = argparse.ArgumentParser(description = argparse_help_dict['help'])
 
 # basic arguments
 parser.add_argument('--tabular-eos-file', action = 'append', help = argparse_help_dict['tabular-eos-file'], required = True)
-parser.add_argument('--posterior-file', action = 'append', help = 'Path to the posterior samples file. If none are provdided, only priors will be plotted.')
-parser.add_argument('--plot-p-vs-rho', action = 'store_true', help = 'Plot pressure vs. density')
-parser.add_argument('--plot-m-vs-r', action = 'store_true', help = 'Plot mass vs. radius')
-parser.add_argument('--tabular-eos-label', action = 'append', help = 'Label for the tabular EOS file')
-parser.add_argument('--posterior-label', action = 'append', help = 'Label for the posterior samples file')
-parser.add_argument('--color', action = 'append', help = 'Colors for the plot. If not provided, colors will be chosen automatically')
-parser.add_argument('--use-bgcgb-colormap', action = 'store_true', help = 'Use the BlackGreyCyanGreenBlue colormap for the plots')
-parser.add_argument('--verbose', action = 'store_true', help = 'Print information on the progress of the code')
-parser.add_argument('--plot-p-vs-rho-title', action = 'store', help = 'Title for the pressure vs. density plot')
-parser.add_argument('--plot-m-vs-r-title', action = 'store', help = 'Title for the mass vs. radius plot')
+
 
 # extra arguments for more advanced plotting (plot posteriors for multiple tabular EOS files, plot tabular EOS priors, etc.)
 parser.add_argument('--plot-tabular-eos-prior', action = 'append', help = argparse_help_dict['plot-tabular-eos-prior'])
