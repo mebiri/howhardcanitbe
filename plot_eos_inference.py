@@ -257,18 +257,30 @@ elif opts.render_eos_files:
                 density_grid = 10**np.linspace(14,16,200) #need to choose good range of densities
                 
                 fill_opts = {}
+                plot_opts = {}
+                label_here = None
+                fill_here = None
+                color_here = None
                 if opts.fill_color and len(opts.fill_color) > i:
-                    fill_opts['color'] = opts.fill_color[i]
+                    fill_here = opts.fill_color[i]
+                if opts.color and len(opts.color) > i:
+                    color_here = opts.color[i]
+                if opts.eos_label and len(opts.eos_label) > i:
+                    label_here = opts.eos_label[i]
+                
+                if fill_here:
+                    fill_opts['color'] = fill_here
                     fill_opts['alpha'] = 0.1
                 else:
                     fill_opts['alpha'] = 0.0 #transparent
                     #fill_opts['color'] = (1.0, 1.0, 1.0) #should be white
                 
-                plot_opts= {}
-                if opts.color and len(opts.color) > i:
-                    plot_opts['color'] = opts.color[i]
+
+                if color_here:
+                    plot_opts['color'] = color_here
+                    if color_here == 'white' and label_here:
+                        fill_opts['label'] = label_here
                 
-                if opts.eos_label and len(opts.eos_label) > i:
                     if plot_opts['color'] == 'white':
                         label_here = None
                         fill_opts['label'] = opts.eos_label[i]
