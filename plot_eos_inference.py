@@ -46,8 +46,8 @@ parser = argparse.ArgumentParser()#description = argparse_help_dict['help'])
 parser.add_argument('--eos-file', action = 'append',help='The last shall be first (top layer), and the first shall be last (bottom)')#, help = argparse_help_dict['tabular-eos-file'], required = True)
 parser.add_argument('--num-eos',default=1,type=int,help="Number of lines of posterior file to plot EOS curves for (starts at 0). Enter 0 to do all lines (use draw_eos with this)")
 #parser.add_argument('--posterior-file', action = 'append', help = 'Path to the posterior samples file(s). If none are provdided, only priors will be plotted.')
-parser.add_argument('--plot-p-vs-rho', action = 'store_true', help = 'Plot pressure vs. density')
-parser.add_argument('--plot-m-vs-r', action = 'store_true', help = 'Plot mass vs. radius')
+parser.add_argument('--plot-PD', action = 'store_true', help = 'Plot pressure vs. density')
+parser.add_argument('--plot-MR', action = 'store_true', help = 'Plot mass vs. radius; uses reprimand')
 parser.add_argument('--eos-label', action = 'append', help = 'Label(s) for the EOS file(s) - order must be the same as eos-file option')
 #parser.add_argument('--posterior-label', action = 'append', help = 'Label for the posterior samples file')
 parser.add_argument('--color', action = 'append', help = 'Line colors for the plot. If not provided, colors will be chosen automatically')
@@ -244,51 +244,69 @@ if opts.render_eos_objects: #directly render all eos in provided range using the
     sys.exit(0)
     
 elif opts.render_eos_files:
-    for i in np.arange(len(opts.eos_file)):        
-        initialize_eos(opts.eos_file[i])
-        
-        if my_eos_list is None:
-            print("ERROR: no valid EOSs could be created for this file.")
-            continue 
-        else:
-            print("EOS list initialized; total:",len(my_eos_list))
-            density_grid = 10**np.linspace(14,16,200) #need to choose good range of densities
+    if opts.plot_PD:
+        print("Creating pressure-density figure.")
+        for i in np.arange(len(opts.eos_file)): 
+            initialize_eos(opts.eos_file[i])
             
-            fill_opts = {}
-            if opts.fill_color:
-                fill_opts['color'] = opts.fill_color[i]
-                fill_opts['alpha'] = 0.1
+            if my_eos_list is None:
+                print("ERROR: no valid EOSs could be created for this file.")
+                continue 
             else:
-                fill_opts['alpha'] = 0.0
-                #fill_opts['color'] = (1.0, 1.0, 1.0) #should be white
-            
-            plot_opts= {}
-            if opts.eos_label:
-                label_here = opts.eos_label[i]
-                #plot_opts['label'] = opts.eos_label[i]
-            if opts.color:
-                plot_opts['color'] = opts.color[i]
+                print("EOS list initialized; total:",len(my_eos_list))
+                density_grid = 10**np.linspace(14,16,200) #need to choose good range of densities
                 
-            render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts,plot_label=label_here)
+                fill_opts = {}
+                if opts.fill_color and len(opts.fill_color) > i:
+                    fill_opts['color'] = opts.fill_color[i]
+                    fill_opts['alpha'] = 0.1
+                else:
+                    fill_opts['alpha'] = 0.0
+                    #fill_opts['color'] = (1.0, 1.0, 1.0) #should be white
+                
+                if opts.eos_label and len(opts.eos_label) > i:
+                    label_here = opts.eos_label[i]
+                    #plot_opts['label'] = opts.eos_label[i]
+                else:
+                    label_here = ""
+                
+                plot_opts= {}
+                if opts.color and len(opts.color) > i:
+                    plot_opts['color'] = opts.color[i]
+                    
+                render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts,plot_label=label_here)
+            
+        print("All EOS rendered.")
+        plt.xlabel(r"log$_{10} \rho$ [g cm$^{-3}$]")
+        plt.ylabel(r"log$_{10} P$ [dyn cm$^{-2}$]")
+        if opts.eos_label:
+            plt.legend()
+        dpi_base=200
+        res_base = 4*dpi_base
+        save_name = "EOS_PDplot"
+        for e in opts.eos_file:
+            save_name += "_"+e.split("/")[-1].split(".")[0]
+
+        plt.savefig(save_name+fig_extension,dpi=res_base)
+        print("EOS PD figure saved.")
+    
+    if opts.plot_MR:
+        print("Creating mass-radius figure.")
         
-    print("All EOS rendered.")
-    plt.xlabel(r"log$_{10} \rho$ [g cm$^{-3}$]")
-    plt.ylabel(r"log$_{10} P$ [dyn cm$^{-2}$]")
-    if opts.eos_label:
-        plt.legend()
+        dpi_base=200
+        res_base = 4*dpi_base
+        save_name = "EOS_MRplot"
+        for e in opts.eos_file:
+            save_name += "_"+e.split("/")[-1].split(".")[0]
+
+        #plt.savefig(save_name+fig_extension,dpi=res_base)
+        print("EOS MR figure saved.")
     
 else:
     print(" ERROR: no valid rendering option provided. Exiting.")
     sys.exit(0)
 
-dpi_base=200
-res_base = 4*dpi_base
-save_name = "EOS_PDplot"
-for e in opts.eos_file:
-    save_name += "_"+e.split("/")[-1].split(".")[0]
 
-plt.savefig(save_name+fig_extension,dpi=res_base)
-print("EOS figure saved.")
 
 sys.exit(0)
 
