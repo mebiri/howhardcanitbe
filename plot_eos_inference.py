@@ -146,44 +146,37 @@ def render_eos(eos, xvar='energy_density', yvar='pressure',units='cgs',npts=100,
     return None
 
 
-my_eos = None
-def initialize_one_eos():
-    #This gets one line of data; it will also get the names for each column, after header:
-    dat = np.genfromtxt(opts.eos_file[0],names=True)[0]   # Parse file for them, to reduce need for burden parsing, and avoid burden/confusion.
-    #all_params = np.loadtxt(opts.eos_file,names=True)[0]
-    
-    param_names = dat.dtype.names #separate out the names from the data
-    all_params = dat.view((float, len(param_names)))
-    print(all_params)
-    #args_init = {'input_line' : dat_as_array, 'param_names':param_names}#, 'cip_param_names':coord_names}  # pass the recordarray broken into parts, for convenience
-    
-    #dat_orig_names = param_names[2:] #Adapted from ye old example_gaussian.py
-    #print("Original field names:", dat_orig_names)
-    
-    #supplemental_init = initialize_me #getattr(external_likelihood_module, 'initialize_me') #find initialize_me()
-    #supplemental_init(**args_init) 
-    eos_names = []
-    eos_dat = []
-    pop_params = []
-    pop_params_names = [] #yes this is literally just for the one print statement
-    pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
-    for i in param_names[2:]: #should be anything past lnL, sig_lnL
-        if i in pop_params_lib:
-            pop_params_names.append(i)
-            pop_params.append(all_params[param_names.index(i)])
-        else: #anything that isn't m1, m2, sig
-            eos_names.append(i)
-            eos_dat.append(all_params[param_names.index(i)])
-    
-    global my_eos
-    #global constraint_mmax_factor
-    if len(eos_names) > 0:
-        my_eos = generate_eos(eos_dat, eos_names)
-        #constraint_mmax_factor = mmax_constraint(eos.mMaxMsun) 
-        #print("m_max constraint factor for this EOS:",constraint_mmax_factor)
+#ported from EOSPlotUtilities for modifications
+def render_eos_list_quantiles_vs(eos_list, quantile_bounds=None, xvar='energy_density', xgrid=None,yvar='pressure', units='cgs',use_monotonic=True,use_log=True,return_outvals=False,input_outvals=None,show_traces=False,plot_kwargs={},fill_kwargs={},plot_label=""):
+    outvals_here=None
+    if input_outvals is None:
+        outvals_here  = eosplot.eval_eos_list_vs(eos_list, xvar=xvar , xgrid=xgrid, yvar=yvar, units=units, use_monotonic=use_monotonic)
     else:
-        print("ERROR: Unable to create EOS object.") #Likely a no-CIP-test route only
-        my_eos = None
+        outvals_here = input_outvals
+
+    if outvals_here is None:
+        raise Exception(" failure generating eval list, should never happen this way")
+
+    xgrid_here = np.array(xgrid)
+    upper_vals = np.percentile(outvals_here,quantile_bounds[0]*100,1)
+    lower_vals = np.percentile(outvals_here,quantile_bounds[1]*100,1)
+    if use_log:
+        xgrid_here = np.log10(xgrid_here)
+        upper_vals = np.log10(upper_vals)
+        lower_vals = np.log10(lower_vals)
+
+    if show_traces:
+        #print(outvals_here.shape, xgrid_here.shape)
+        for indx in np.arange(len(outvals_here)):
+            if use_log:
+                plt.plot(xgrid_here,np.log10(outvals_here[:,indx]),color='k')
+        
+    plt.plot(xgrid_here, upper_vals, label=plot_label, **plot_kwargs) #this is the change
+    plt.plot(xgrid_here, lower_vals, **plot_kwargs)
+    plt.fill_between(xgrid_here, lower_vals,upper_vals,**fill_kwargs)
+    if return_outvals:
+        return outvals_here #bug in original code: undefined variable "outvals"
+    return None
 
 
 my_eos_list = None
@@ -197,8 +190,8 @@ def initialize_eos(eos_file):
     param_names = dat.dtype.names #separate out the names from the data
     all_params = dat.view((float, len(param_names)))
     
-    if len(all_params) > opts.draw_eos:
-        lines_to_use = np.choice(len(all_params),size=opts.draw_eos,replace=False)
+    if len(all_params) > int(opts.draw_eos):
+        lines_to_use = np.choice(len(all_params),size=int(opts.draw_eos),replace=False)
         print("Drawing",len(lines_to_use),"random lines from this file.")
         all_params = all_params[lines_to_use]
         print("Length of dat is now:",len(all_params))
@@ -207,15 +200,11 @@ def initialize_eos(eos_file):
 
     eos_names = []
     eos_dat = np.zeros((len(all_params),len(param_names[2:])))
-    #pop_params = []
-    #pop_params_names = [] #yes this is literally just for the one print statement
     pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
     j= 0
     for i in param_names[2:]: #should be anything past lnL, sig_lnL
         if i in pop_params_lib:
             continue
-            #pop_params_names.append(i)
-            #pop_params.append(all_params[:,param_names.index(i)])
         else: #anything that isn't m1, m2, sig
             eos_names.append(i)
             eos_dat[:,j] = all_params[:,param_names.index(i)]
@@ -237,8 +226,8 @@ def initialize_eos(eos_file):
 
 #my_eos = EOSManager.EOSLALSimulation('SLy')
 #eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
-if opts.render_eos_objects: #maybe this was for loading pyr objects?
-    initialize_eos()
+if opts.render_eos_objects: #directly render all eos in provided range using their own axes
+    initialize_eos(opts.eos_file[0])
     
     if my_eos_list is None:
         print("All provided EOS parameters failed; exiting.")
@@ -248,15 +237,19 @@ if opts.render_eos_objects: #maybe this was for loading pyr objects?
     for e in my_eos_list:
         render_eos(e.eos,'rest_mass_density', 'pressure')
     print("All EOS rendered.")
+    dpi_base=200
+    res_base = 4*dpi_base
+    plt.savefig("test_eos_pd_plot"+fig_extension,dpi=res_base)
+    print("EOS figure saved.")
+    sys.exit(0)
     
 elif opts.render_eos_files:
-    print("You bettah got my files, buddy.")
     for i in np.arange(len(opts.eos_file)):        
         initialize_eos(opts.eos_file[i])
         
         if my_eos_list is None:
             print("ERROR: no valid EOSs could be created for this file.")
-            continue #sys.exit(0)
+            continue 
         else:
             print("EOS list initialized; total:",len(my_eos_list))
             density_grid = 10**np.linspace(14,16,200) #need to choose good range of densities
@@ -264,18 +257,25 @@ elif opts.render_eos_files:
             fill_opts = {}
             if opts.fill_color:
                 fill_opts['color'] = opts.fill_color[i]
+                fill_opts['alpha'] = 0.1
             else:
-                fill_opts['color'] = (1.0, 1.0, 1.0) #should be white
+                fill_opts['alpha'] = 0.0
+                #fill_opts['color'] = (1.0, 1.0, 1.0) #should be white
             
             plot_opts= {}
             if opts.eos_label:
-                plot_opts['label'] = opts.eos_label[i]
+                label_here = opts.eos_label[i]
+                #plot_opts['label'] = opts.eos_label[i]
             if opts.color:
                 plot_opts['color'] = opts.color[i]
                 
-            eosplot.render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts)
+            render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts,plot_label=label_here)
         
     print("All EOS rendered.")
+    plt.xlabel(r"log$_{10} \rho$ [g cm$^{-3}$]")
+    plt.ylabel(r"log$_{10} P$ [dyn cm$^{-2}$]")
+    if opts.eos_label:
+        plt.legend()
     
 else:
     print(" ERROR: no valid rendering option provided. Exiting.")
@@ -283,7 +283,11 @@ else:
 
 dpi_base=200
 res_base = 4*dpi_base
-plt.savefig("test_eos_plot"+fig_extension,dpi=res_base)
+save_name = "EOS_PDplot"
+for e in opts.eos_file:
+    save_name += "_"+e.split("/")[-1].split(".")[0]
+
+plt.savefig(save_name+fig_extension,dpi=res_base)
 print("EOS figure saved.")
 
 sys.exit(0)
