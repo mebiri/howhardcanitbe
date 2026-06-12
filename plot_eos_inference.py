@@ -191,7 +191,7 @@ def initialize_eos(eos_file):
     all_params = dat.view((float, len(param_names)))
     
     if len(all_params) > int(opts.draw_eos):
-        lines_to_use = np.choice(len(all_params),size=int(opts.draw_eos),replace=False)
+        lines_to_use = np.random.choice(len(all_params),size=int(opts.draw_eos),replace=False)
         print("Drawing",len(lines_to_use),"random lines from this file.")
         all_params = all_params[lines_to_use]
         print("Length of dat is now:",len(all_params))
@@ -261,18 +261,22 @@ elif opts.render_eos_files:
                     fill_opts['color'] = opts.fill_color[i]
                     fill_opts['alpha'] = 0.1
                 else:
-                    fill_opts['alpha'] = 0.0
+                    fill_opts['alpha'] = 0.0 #transparent
                     #fill_opts['color'] = (1.0, 1.0, 1.0) #should be white
-                
-                if opts.eos_label and len(opts.eos_label) > i:
-                    label_here = opts.eos_label[i]
-                    #plot_opts['label'] = opts.eos_label[i]
-                else:
-                    label_here = ""
                 
                 plot_opts= {}
                 if opts.color and len(opts.color) > i:
                     plot_opts['color'] = opts.color[i]
+                
+                if opts.eos_label and len(opts.eos_label) > i:
+                    if plot_opts['color'] == 'white':
+                        label_here = None
+                        fill_opts['label'] = opts.eos_label[i]
+                    else:
+                        label_here = opts.eos_label[i]
+                    #plot_opts['label'] = opts.eos_label[i]
+                else:
+                    label_here = None
                     
                 render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts,plot_label=label_here)
             
