@@ -43,29 +43,34 @@ import matplotlib.pyplot as plt
 parser = argparse.ArgumentParser()#description = argparse_help_dict['help'])
 
 # basic arguments
-parser.add_argument('--eos-file', action = 'append',help='Just provide one, the rest will be ignored')#, help = argparse_help_dict['tabular-eos-file'], required = True)
-parser.add_argument('--num-eos',default=1,type=int,help="Number of lines of posterior file to plot EOS curves for (starts at 0)")
+parser.add_argument('--eos-file', action = 'append',help='The last shall be first (top layer), and the first shall be last (bottom)')#, help = argparse_help_dict['tabular-eos-file'], required = True)
+parser.add_argument('--num-eos',default=1,type=int,help="Number of lines of posterior file to plot EOS curves for (starts at 0). Enter 0 to do all lines (use draw_eos with this)")
 #parser.add_argument('--posterior-file', action = 'append', help = 'Path to the posterior samples file(s). If none are provdided, only priors will be plotted.')
 parser.add_argument('--plot-p-vs-rho', action = 'store_true', help = 'Plot pressure vs. density')
 parser.add_argument('--plot-m-vs-r', action = 'store_true', help = 'Plot mass vs. radius')
-parser.add_argument('--tabular-eos-label', action = 'append', help = 'Label for the tabular EOS file')
-parser.add_argument('--posterior-label', action = 'append', help = 'Label for the posterior samples file')
-parser.add_argument('--color', action = 'append', help = 'Colors for the plot. If not provided, colors will be chosen automatically')
+parser.add_argument('--eos-label', action = 'append', help = 'Label(s) for the EOS file(s) - order must be the same as eos-file option')
+#parser.add_argument('--posterior-label', action = 'append', help = 'Label for the posterior samples file')
+parser.add_argument('--color', action = 'append', help = 'Line colors for the plot. If not provided, colors will be chosen automatically')
 parser.add_argument('--use-bgcgb-colormap', action = 'store_true', help = 'Use the BlackGreyCyanGreenBlue colormap for the plots')
 parser.add_argument('--verbose', action = 'store_true', help = 'Print information on the progress of the code')
 parser.add_argument('--plot-p-vs-rho-title', action = 'store', help = 'Title for the pressure vs. density plot')
 parser.add_argument('--plot-m-vs-r-title', action = 'store', help = 'Title for the mass vs. radius plot')
 parser.add_argument('--render-eos-objects',action='store_true',help='I do not know what this was for')
 parser.add_argument('--render-eos-files',action='store_true',help='!! Always use this with posterior files !!')
+parser.add_argument('--fill-color',action='append',help="Fill colors for region between percentiles; leave blank for no fill")
+parser.add_argument('--draw-eos',default=500,help="Number of random EOS to use from file, if file length > provided value")
 
 
 opts = parser.parse_args()
 
-posterior_header = None
+posterior_header = ""
+print("posterior_header is:",posterior_header)
+
 #NOTE: ONLY THESE EOS_PARAMS HANDLED CURRENTLY: spectral, cs_spectral, PP
 def generate_eos(eos_line, eos_headers, eos_param="spectral",save_header=True,verbose=False):
     if verbose: print("Creating EOS object of type",eos_param,"using given data line.")
     
+    global posterior_header
     if eos_headers == posterior_header:
         eos_names = posterior_header
         if verbose: print("Relabeling EOS using existing headers:",eos_names) 
@@ -82,7 +87,7 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral",save_header=True,ve
                 indx+=1
             print("Relabeled EOS headers:",eos_names)  
         if save_header:
-            global posterior_header
+            #global posterior_header
             posterior_header = eos_names
             
     spec_param_array = eos_line 
@@ -182,15 +187,26 @@ def initialize_one_eos():
 
 
 my_eos_list = None
-def initialize_eos():
+def initialize_eos(eos_file):
     #This gets 1+ lines of data; it will also get the names for each column, after header:
-    dat = np.genfromtxt(opts.eos_file[0],names=True)[:opts.num_eos]
+    if opts.num_eos == 0:
+        dat = np.genfromtxt(eos_file,names=True)
+    else:
+        dat = np.genfromtxt(eos_file,names=True)[:opts.num_eos]
+    
     param_names = dat.dtype.names #separate out the names from the data
     all_params = dat.view((float, len(param_names)))
-    print(all_params[0])
+    
+    if len(all_params) > opts.draw_eos:
+        lines_to_use = np.choice(len(all_params),size=opts.draw_eos,replace=False)
+        print("Drawing",len(lines_to_use),"random lines from this file.")
+        all_params = all_params[lines_to_use]
+        print("Length of dat is now:",len(all_params))
+    
+    print("First line:",all_params[0])
 
     eos_names = []
-    eos_dat = np.zeros(len(all_params),len(param_names[2:]))
+    eos_dat = np.zeros((len(all_params),len(param_names[2:])))
     #pop_params = []
     #pop_params_names = [] #yes this is literally just for the one print statement
     pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
@@ -213,7 +229,7 @@ def initialize_eos():
             if my_eos is None:
                 print("  eos line",i,"failed to generate.")
             else:
-                my_eos_list.append(my_eos)
+                my_eos_list.append(my_eos.eos)
     else:
         print("ERROR: No EOS columns found. Unable to create EOS object.")
         my_eos_list = None
@@ -235,18 +251,31 @@ if opts.render_eos_objects: #maybe this was for loading pyr objects?
     
 elif opts.render_eos_files:
     print("You bettah got my files, buddy.")
-    #use np.choice to render only --num-eos # of lines from file if len(file) > num-eos
-    initialize_eos()
-    
-    if my_eos_list is None:
-        print("ERROR: no valid EOSs could be created. Exiting.")
-        sys.exit(0)
-    else:
-        print("EOS list initialized; total:",len(my_eos_list))
-        density_grid = 10**np.linspace(14,16,100) #need to choose good range of densities
-        eosplot.render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True)
-    
-    
+    for i in np.arange(len(opts.eos_file)):        
+        initialize_eos(opts.eos_file[i])
+        
+        if my_eos_list is None:
+            print("ERROR: no valid EOSs could be created for this file.")
+            continue #sys.exit(0)
+        else:
+            print("EOS list initialized; total:",len(my_eos_list))
+            density_grid = 10**np.linspace(14,16,200) #need to choose good range of densities
+            
+            fill_opts = {}
+            if opts.fill_color:
+                fill_opts['color'] = opts.fill_color[i]
+            else:
+                fill_opts['color'] = (1.0, 1.0, 1.0) #should be white
+            
+            plot_opts= {}
+            if opts.eos_label:
+                plot_opts['label'] = opts.eos_label[i]
+            if opts.color:
+                plot_opts['color'] = opts.color[i]
+                
+            eosplot.render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts)
+        
+    print("All EOS rendered.")
     
 else:
     print(" ERROR: no valid rendering option provided. Exiting.")
