@@ -16,6 +16,7 @@ for each EOS in the eos_file(s) (pyr data files not yet supported)
 import numpy as np
 import argparse
 import sys
+import copy
 
 import RIFT.physics.EOSManager as EOSManager
 import RIFT.plot_utilities.EOSPlotUtilities as eosplot
@@ -49,8 +50,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--eos-file',action='append',help='REQUIRED, even if loading pyr dat! The last shall be first (top layer), and the first shall be last (bottom)',required=True)
 parser.add_argument('--num-eos', default=1,type=int,help="Number of lines of each posterior file to plot EOS curves for (starts at 0). Enter 0 to do all lines (use draw_eos with this)")
 parser.add_argument('--draw-eos',default=500,help="Number of random EOS to interpolate from posterior file, if file length > provided value")
-parser.add_argument('--load-pyr-obj-dir',action='append',type=str,default=None,help="Dir(s) containing pyr objects to load for MR plot (create using NICER code with --save-pyr in Hyperpipe)")
-parser.add_argument('--load-pyr-dat-dir',action='append',type=str,default=None,help="Dir(s) containing mass-radius and pressure-density pyr dat files (create using NICER code with --save-all-files in Hyperpipe)")
+parser.add_argument('--load-pyr-obj-dir',action='append',type=str,default=None,help="Dir(s)/basename(s) containing pyr objects to load for MR plot (create using NICER code with --save-pyr in Hyperpipe)")
+parser.add_argument('--load-pyr-dat-dir',action='append',type=str,default=None,help="Dir(s)/basenames(s) containing mass-radius pyr dat files for MR plot (create using NICER code with --save-all-files in Hyperpipe)")
 parser.add_argument("--percentile-bounds",type=str,nargs='*',default='[0.05,0.95]',help="percentile bounds for interpolation; e.g., [0.05,0.95] (NO SPACES)")
 #flags
 parser.add_argument('--render-eos-objects',action='store_true',help="Plot each eos line separately, instead of interpolating to a grid")
@@ -206,7 +207,7 @@ def render_eos_list_quantiles_vs(eos_list, quantile_bounds=None, xvar='energy_de
     plot_kwargs['label'] = '' #this is the modification
     plt.plot(xgrid_here, lower_vals, **plot_kwargs)
     plt.fill_between(xgrid_here, lower_vals,upper_vals,**fill_kwargs)
-    plt.ylim(min(lower_vals)-0.1,max(upper_vals)+0.1) #also new here
+    #plt.ylim(min(lower_vals)-0.1,max(upper_vals)+0.1) #also new here
     if return_outvals:
         return outvals_here #bug in original code: undefined variable "outvals"
     return None
@@ -287,8 +288,8 @@ if opts.plot_pd:
             print("EOS list total:",len(my_eos_list))
             density_grid = 10**np.linspace(14,16,200) #need to choose good range of densities
             
-            plot_opts = plot_opts_list[i]
-            fill_opts = fill_opts_list[i]
+            plot_opts = copy.deepcopy(plot_opts_list[i])
+            fill_opts = copy.deepcopy(fill_opts_list[i])
             render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts)
         
     print("All pressure-density EOS rendered.")
@@ -311,6 +312,7 @@ if opts.plot_pd:
     print("EOS pressure-density figure saved as "+save_name+fig_extension)
 
 if opts.plot_mr:
+    plt.clf()
     print("Creating mass-radius figure...")
     import pyreprimand as pyr
     import glob
@@ -380,7 +382,7 @@ if opts.plot_mr:
     print("All mass-radius EOS rendered.")
     plt.xlabel("$R$ [km]")
     plt.ylabel(r"$M$ [M$_{\odot}$]")
-    plt.xlim(8,20)
+    plt.xlim(8,18)
     plt.ylim(mass_range[0],mass_range[1])
     if opts.eos_label:
         plt.legend(frameon=False)
