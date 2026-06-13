@@ -206,6 +206,7 @@ def render_eos_list_quantiles_vs(eos_list, quantile_bounds=None, xvar='energy_de
     plot_kwargs['label'] = '' #this is the modification
     plt.plot(xgrid_here, lower_vals, **plot_kwargs)
     plt.fill_between(xgrid_here, lower_vals,upper_vals,**fill_kwargs)
+    plt.ylim(min(lower_vals)-0.1,max(upper_vals)+0.1) #also new here
     if return_outvals:
         return outvals_here #bug in original code: undefined variable "outvals"
     return None
@@ -275,7 +276,7 @@ if opts.render_eos_objects: #directly render all eos in provided range using the
     sys.exit(0)
     
 if opts.plot_pd: 
-    print("Creating pressure-density figure.")
+    print("Creating pressure-density figure...")
     for i in np.arange(len(opts.eos_file)): 
         my_eos_list = build_eos_sequence(opts.eos_file[i],lines_to_use_list[i])
             
@@ -291,10 +292,12 @@ if opts.plot_pd:
             render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts)
         
     print("All pressure-density EOS rendered.")
-    plt.xlabel(r"log$_{10} \rho$ [g cm$^{-3}$]")
-    plt.ylabel(r"log$_{10} P$ [dyn cm$^{-2}$]")
+    plt.xlabel(r"log$_{10}\, \rho$ [g cm$^{-3}$]")
+    plt.ylabel(r"log$_{10}\, P$ [dyn cm$^{-2}$]")
+    plt.xlim(14,16)
+    #plt.ylim() - set in render_eos_list_quantiles_vs()
     if opts.eos_label:
-        plt.legend()
+        plt.legend(frameon=False)
     dpi_base=200
     res_base = 4*dpi_base
     if opts.plot_pd_name:
@@ -308,7 +311,7 @@ if opts.plot_pd:
     print("EOS pressure-density figure saved as "+save_name+fig_extension)
 
 if opts.plot_mr:
-    print("Creating mass-radius figure.")
+    print("Creating mass-radius figure...")
     import pyreprimand as pyr
     import glob
     import lal
@@ -335,7 +338,7 @@ if opts.plot_mr:
                                                                    xvar='radius', yvar='mass', range_mass='[0.7,2.5]', 
                                                                    percentile_method = 'use nan percentile', plot_kwargs=plot_opts, fill_kwargs=fill_opts)
         elif opts.load_pyr_dat_dir:
-            print("WARNING: not fully implemented or tested. Use with caution!")
+            print(" WARNING: using pyr dat not fully implemented or tested. Use with caution!")
             from scipy.interpolate import UnivariateSpline, PchipInterpolator
             #load .txt files of pyr dat
             #opts = "path/MARG-0-"
@@ -380,13 +383,13 @@ if opts.plot_mr:
     plt.xlim(8,20)
     plt.ylim(mass_range[0],mass_range[1])
     if opts.eos_label:
-        plt.legend()
+        plt.legend(frameon=False)
     dpi_base=200
     res_base = 4*dpi_base
     if opts.plot_mr_name:
         save_name = opts.plot_mr_name
     else:
-        save_name = "EOS_PDplot"
+        save_name = "EOS_MRplot"
         for e in opts.eos_file:
             save_name += "_"+e.split("/")[-1].split(".")[0]
     plt.savefig(save_name+fig_extension,dpi=res_base)
