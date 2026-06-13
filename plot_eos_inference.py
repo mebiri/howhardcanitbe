@@ -60,23 +60,34 @@ parser.add_argument('--plot-mr',action='store_true',help='Plot mass vs. radius; 
 parser.add_argument('--eos-label', action='append',help='Label(s) for the EOS file(s) - order must be the same as eos-file option (use underscores for spaces)')
 parser.add_argument('--eos-color', action='append',help='Line colors for the plot. If not provided, colors will be chosen automatically. Use white to have no line (must specify fill-color)')
 parser.add_argument('--fill-color',action='append',help="Fill colors for region between percentiles; leave blank for no fill")
-parser.add_argument('--plot-pd-name',action='store',help='Filename for the pressure vs. density plot')
-parser.add_argument('--plot-mr-name',action='store',help='Filename for the mass vs. radius plot')
+parser.add_argument('--plot-pd-name',type=str,default=None,help='Filename for the pressure vs. density plot')
+parser.add_argument('--plot-mr-name',type=str,default=None,help='Filename for the mass vs. radius plot')
 
 parser.add_argument('--verbose', action = 'store_true', help = 'Print information on the progress of the code')
 
 opts = parser.parse_args()
 
-#get percentile range into proper form - completely ignored below, but it's a fun thought
-quant_bounds = np.zeros((len(opts.percentile_bounds),2))
-for i in range(len(opts.percentile_bounds)): 
-    strbounds = opts.percentile_bounds[i].replace("[","").replace("]","").split(",")
-    if len(strbounds) > 2:
-        print("ERROR: provided percentile range invalid; will use defaults (90%).")
-        quant_bounds[i,:] = [0.05,0.95]
-    else:
-        quant_bounds[i,:] = [float(x) for x in strbounds]
+#get percentile range into proper form - only works with one set of bounds, right now
+quant_bounds = None#np.zeros((len(opts.percentile_bounds),2))
+#for i in range(len(opts.percentile_bounds)): 
+strbounds = opts.percentile_bounds.replace("[","").replace("]","").split(",")
+if len(strbounds) > 2:
+    print("ERROR: provided percentile range invalid; will use default (90%).")
+    quant_bounds = [0.05,0.95]
+else:
+    quant_bounds = [float(x) for x in strbounds]
     #quant_bounds[i,:] = eval(opts.percentile_bounds[i]) #eval is ultra-sketchy but oh well
+
+
+def plot_credible():
+    # Writing on the plot what Credible Intervals are being shown. - copied from Atul
+    quantile_text = ''
+    #for i in range(len(quant_bounds)):
+        #if i ==0:
+    quantile_text += str(round((quant_bounds[1] - quant_bounds[0])*100))+'% CI'
+        #else: quantile_text += '\n'+ str(round((quant_bounds[i][1] - quant_bounds[i][0])*100))+'% CI'
+    plt.text(18.2, 2.3, quantile_text, bbox={'facecolor':'white','alpha':1,'edgecolor':'black'})
+
 
 posterior_header = None
 #NOTE: ONLY THESE EOS_PARAMS HANDLED CURRENTLY: spectral, cs_spectral, PP
@@ -279,47 +290,52 @@ if opts.plot_pd:
             fill_opts = fill_opts_list[i]
             render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts)
         
-    print("All EOS rendered.")
+    print("All pressure-density EOS rendered.")
     plt.xlabel(r"log$_{10} \rho$ [g cm$^{-3}$]")
     plt.ylabel(r"log$_{10} P$ [dyn cm$^{-2}$]")
     if opts.eos_label:
         plt.legend()
     dpi_base=200
     res_base = 4*dpi_base
-    save_name = "EOS_PDplot"
-    for e in opts.eos_file:
-        save_name += "_"+e.split("/")[-1].split(".")[0]
+    if opts.plot_pd_name:
+        save_name = opts.plot_pd_name
+    else:
+        save_name = "EOS_PDplot"
+        for e in opts.eos_file:
+            save_name += "_"+e.split("/")[-1].split(".")[0]
     plt.savefig(save_name+fig_extension,dpi=res_base)
-    print("EOS pressure-density figure saved.")
+    plt.show()
+    print("EOS pressure-density figure saved as "+save_name+fig_extension)
 
-if opts.plot_MR:
+if opts.plot_mr:
     print("Creating mass-radius figure.")
     import pyreprimand as pyr
     import glob
     import lal
+    mass_range = None
     for i in np.arange(len(opts.eos_file)): 
         if opts.load_pyr_obj_dir:
             #fetch pyr object files matching lines_to_use indices
             #opts = "path/MARG-0-"
-            chunk_files = glob.glob(opts.load_pyr_obj_dir+"0_reprimand.tov.seq_*.h5")
+            chunk_files = glob.glob(opts.load_pyr_obj_dir[i]+"0_reprimand.tov.seq_*.h5")
             nchunk = len(chunk_files)
-            loadname = opts.recycle_reprimand_objects_from+"_reprimand.tov.seq_"+str(i)+".h5"
             eos_sequence = []
-            for j in lines_to_use:
+            for j in lines_to_use_list[i]:
                 if nchunk == 1:
-                    loadname = opts.load_pyr_obj_dir+str(j)+"_reprimand.tov.seq_0.h5"
+                    loadname = opts.load_pyr_obj_dir[i]+str(j)+"_reprimand.tov.seq_0.h5"
                 else:
-                    loadname = opts.load_pyr_obj_dir+str(j-(j%nchunk))+"_reprimand.tov.seq_"+str(j%nchunk)+".h5"
+                    loadname = opts.load_pyr_obj_dir[i]+str(j-(j%nchunk))+"_reprimand.tov.seq_"+str(j%nchunk)+".h5"
                 tov_seq_reprimand = pyr.load_star_branch(loadname, pyr.units.geom_solar(msun_si=lal.MSUN_SI))
                 eos_sequence.append(tov_seq_reprimand)
             
             plot_opts = plot_opts_list[i]
             fill_opts = fill_opts_list[i]
+            mass_range = [0.7,2.5]
             eosplot.render_reprimand_tovsequence_list_quantiles_vs(eos_sequence, quantile_bounds=[0.05,0.95], 
                                                                    xvar='radius', yvar='mass', range_mass='[0.7,2.5]', 
                                                                    percentile_method = 'use nan percentile', plot_kwargs=plot_opts, fill_kwargs=fill_opts)
         elif opts.load_pyr_dat_dir:
-            print("WARNING: not fully implemented. DO NOT USE, BONEHEAD!")
+            print("WARNING: not fully implemented or tested. Use with caution!")
             from scipy.interpolate import UnivariateSpline, PchipInterpolator
             #load .txt files of pyr dat
             #opts = "path/MARG-0-"
@@ -329,11 +345,11 @@ if opts.plot_MR:
                 #    dat_here = np.loadtxt(opts.load_pyr_dat_dir+str(j)+"_pressure-density_"+str(j)+".txt")
                 #    #do something with this
                 #if opts.plot_mr:
-                dat_here = np.loadtxt(opts.load_pyr_dat_dir+str(j)+"_mass-radius_"+str(j)+".txt")[:,:2]
+                dat_here = np.loadtxt(opts.load_pyr_dat_dir[i]+str(j)+"_mass-radius_"+str(j)+".txt")[:,:2]
                 #mass = 0, radius = 1
-                eos_dat.append(dat_here)
+                eos_dat.append(dat_here) #will become very large, possibly ragged 3D array (list of 2D Nx2 arrays)
             
-            r_grid = np.linspace(8,20,2000)
+            r_grid = np.linspace(8,20,1200) #0.01 resolution, same as pd plot
             npts = len(r_grid)
             #    print(npts,n_eos)
             # LARGE ALLOCATION potentially, so watch out -- usually I just need quantiles
@@ -350,6 +366,7 @@ if opts.plot_MR:
             xgrid_here = np.array(r_grid)
             upper_vals = np.percentile(outvals,quant_bounds[0]*100,1)
             lower_vals = np.percentile(outvals,quant_bounds[1]*100,1)
+            mass_range = [min(upper_vals),max(upper_vals)]
             
             plot_opts = plot_opts_list[i]
             plt.plot(xgrid_here, upper_vals, plot_opts)
@@ -357,12 +374,23 @@ if opts.plot_MR:
             plt.plot(xgrid_here, lower_vals, plot_opts)
             plt.fill_between(xgrid_here, lower_vals,upper_vals,fill_opts_list[i])    
     
+    print("All mass-radius EOS rendered.")
+    plt.xlabel("$R$ [km]")
+    plt.ylabel(r"$M$ [M$_{\odot}$]")
+    plt.xlim(8,20)
+    plt.ylim(mass_range[0],mass_range[1])
+    if opts.eos_label:
+        plt.legend()
     dpi_base=200
     res_base = 4*dpi_base
-    save_name = "EOS_MRplot"
-    for e in opts.eos_file:
-        save_name += "_"+e.split("/")[-1].split(".")[0]
+    if opts.plot_mr_name:
+        save_name = opts.plot_mr_name
+    else:
+        save_name = "EOS_PDplot"
+        for e in opts.eos_file:
+            save_name += "_"+e.split("/")[-1].split(".")[0]
     plt.savefig(save_name+fig_extension,dpi=res_base)
-    print("EOS mass-radius figure saved.")
+    plt.show()
+    print("EOS mass-radius figure saved as "+save_name+fig_extension)
 
 
