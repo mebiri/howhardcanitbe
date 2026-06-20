@@ -63,6 +63,7 @@ parser.add_argument('--eos-color', action='append',help='Line colors for the plo
 parser.add_argument('--fill-color',action='append',help="Fill colors for region between percentiles; leave blank for no fill")
 parser.add_argument('--plot-pd-name',type=str,default=None,help='Filename for the pressure vs. density plot')
 parser.add_argument('--plot-mr-name',type=str,default=None,help='Filename for the mass vs. radius plot')
+parser.add_argument('--show-grid',action='store_true',help="Show gridlines on plot; for MR plot only, right now")
 
 parser.add_argument('--verbose', action = 'store_true', help = 'Print information on the progress of the code')
 
@@ -226,12 +227,13 @@ for i in np.arange(len(opts.eos_file)):
     
     print("Initial data length for file:",len(dat))
     
-    if len(dat) > int(opts.draw_eos):
+    if (int(opts.draw_eos) != 0) and (len(dat) > int(opts.draw_eos)):
         lines_to_use = np.random.choice(len(dat),size=int(opts.draw_eos),replace=False)
         print("Drawing",len(lines_to_use),"random lines from this file.")
         dat = dat[lines_to_use]
         if opts.verbose: print("Length of dat is now:",len(dat))
     else:
+        print("Using all lines from this file; total:",len(dat))
         lines_to_use = np.arange(len(dat)) #needed to get pyr files
     lines_to_use_list.append(lines_to_use)
     
@@ -258,6 +260,7 @@ for i in np.arange(len(opts.eos_file)):
     plot_opts_list.append(plot_opts_here)
     fill_opts_list.append(fill_opts_here)
 
+print("Plot options collected:\n",plot_opts_list,"\n",fill_opts_list)
 
 if opts.render_eos_objects: #directly render all eos in provided range using their own axes
     for i in np.arange(len(opts.eos_file)):
@@ -330,8 +333,12 @@ if opts.plot_mr:
                     loadname = opts.load_pyr_obj_dir[i]+str(j)+"_reprimand.tov.seq_0.h5"
                 else:
                     loadname = opts.load_pyr_obj_dir[i]+str(j-(j%nchunk))+"_reprimand.tov.seq_"+str(j%nchunk)+".h5"
-                tov_seq_reprimand = pyr.load_star_branch(loadname, pyr.units.geom_solar(msun_si=lal.MSUN_SI))
-                eos_sequence.append(tov_seq_reprimand)
+                try:
+                    tov_seq_reprimand = pyr.load_star_branch(loadname, pyr.units.geom_solar(msun_si=lal.MSUN_SI))
+                    eos_sequence.append(tov_seq_reprimand)
+                except:
+                    print(" WARNING: could not find file: "+loadname)
+                    continue
             
             plot_opts = plot_opts_list[i]
             fill_opts = fill_opts_list[i]
@@ -384,10 +391,13 @@ if opts.plot_mr:
     plt.ylabel(r"$M$ [M$_{\odot}$]")
     plt.xlim(8,18)
     plt.ylim(mass_range[0],mass_range[1])
+    if opts.show_grid:
+        plt.grid(True)
     if opts.eos_label:
         plt.legend(frameon=False)
     dpi_base=200
     res_base = 4*dpi_base
+    plt.tight_layout()
     if opts.plot_mr_name:
         save_name = opts.plot_mr_name
     else:
