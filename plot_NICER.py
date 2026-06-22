@@ -10,6 +10,8 @@ import numpy as np
 from scipy.stats import multivariate_normal
 import argparse
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--obs-file', action='append', help="REQUIRED: Filenames/paths for observations to use.")
@@ -24,8 +26,8 @@ parser.add_argument('--field-M-max',type=float,default=2.1)
 parser.add_argument('--field-R-min',type=float,default=8)
 parser.add_argument('--field-R-max',type=float,default=18)
 parser.add_argument('--scale-lnL',type=int,default=1,help="Scale factor to apply to likelihood calcs (applied before log)")
-parser.add_argument('--plot-max',action='store-true')
-parser.add_argument('--plot-causality',action='store-true')
+parser.add_argument('--plot-max',action='store_true')
+parser.add_argument('--plot-causality',action='store_true')
 
 opts = parser.parse_args()
 
@@ -62,15 +64,15 @@ def just_obs():
         dat_cov.append(cov)
         dat_list.append(dat)  
     
+    legends = []
     if opts.plot_max:
-        mMax_likelihood(ax,0.3,24.0)
+        mMax_likelihood(ax,0.3,24.0,legends)
     if opts.plot_causality:
         buchdahl_BH_limits(ax,all=False)
     
     #from plotting import plot_data_and_gaussian
     #order: ${J0740} ${J1731} ${J0030} ${J0437}  
     colors_list = ['green','purple','red','orange']
-    legends = []
     for j in np.arange(len(dat_rv)):
         print("Plotting data for: ",stars[j])
         plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j])#,name=stars[j])
@@ -122,7 +124,7 @@ def plot_data_and_gaussian(mean, covariance, rv, data, ax, color= 'pink', name =
         color = None
     else: pass
     
-    ax.scatter(data[:,a], data[:,b], alpha=alph, s = 2, color = color, label = name,marker=".",linewidth=0)
+    ax.scatter(data[:,a], data[:,b], alpha=alph, s = 2, color = color, label = name,marker="o",linewidth=0)
     #Ellipses for 1,2,3 sigma
     from matplotlib.patches import Ellipse
     for j in range(1, 4):
@@ -133,7 +135,7 @@ def plot_data_and_gaussian(mean, covariance, rv, data, ax, color= 'pink', name =
     return
 
 
-def mMax_likelihood(ax,alph,xlim):
+def mMax_likelihood(ax,alph,xlim,leg):
     #m1, sigma1 = 2.14, 0.1
     #m2, sigma2 = 2.01, 0.04
     #m3, sigma3 = 1.908, 0.016
@@ -147,7 +149,8 @@ def mMax_likelihood(ax,alph,xlim):
     x = np.linspace(7.5,xlim, 500)
 
     for i in np.arange(len(m)):
-        ax.fill_between(x,(m[i]-sig[i])*np.ones(500),(m[i]+sig[i])*np.ones(500),color=colors[i],alpha=alph,label=names[i])
+        ax.fill_between(x,(m[i]-sig[i])*np.ones(500),(m[i]+sig[i])*np.ones(500),color=colors[i],alpha=alph)#,label=names[i])
+        leg.append(Patch(facecolor=colors[i], edgecolor=colors[i],label=names[i]))
     
     #plt.plot(x, norm(loc=m1, scale=sigma1).cdf(x), lw=3, label='PSR J0740+6620')
     #plt.plot(x, norm(loc=m2, scale=sigma2).cdf(x), lw=3, color = 'black', label='PSR J0348+4032', linestyle = 'dashed')
@@ -178,7 +181,7 @@ def buchdahl_BH_limits(ax, all = True):
         ax.text(8.0, 2.55, "Buchdahl limit", rotation=41)
         ax.text(7.3, 2.7, "BH limit", rotation=45)
     else:
-        ax.text(8.5, 2.1, "Causality limit", rotation=35)
+        ax.text(8.5, 2.1, "Causality limit", rotation=50)
     return
 
 
