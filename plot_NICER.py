@@ -38,9 +38,9 @@ def just_obs():
     plt.rcParams['xtick.labelsize'] = 15.0
     plt.rcParams['ytick.labelsize'] = 15.0
     plt.rcParams['axes.labelsize'] = 25.0
-    plt.rcParams['lines.linewidth'] = 2.0
+    plt.rcParams['lines.linewidth'] = 1.0
     
-    fig1 = plt.figure(figsize=(8,6),dpi=250) 
+    fig1 = plt.figure(figsize=(8,6),dpi=200) 
     ax = fig1.add_subplot(111)
     
     dat_rv = [] #formerly external_ns_MR_rv
@@ -75,18 +75,20 @@ def just_obs():
     colors_list = ['green','purple','red','orange']
     for j in np.arange(len(dat_rv)):
         print("Plotting data for: ",stars[j])
-        plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j])#,name=stars[j])
-        legends.append(Line2D([0],[0],marker='o',color='w',label=stars[j],markerfacecolor=colors_list[j],markersize=15))
+        plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j],alph=0.01,markersize=9)#,name=stars[j])
+        legends.append(Line2D([0],[0],marker='o',color='w',label=stars[j],markerfacecolor=colors_list[j],alpha=0.8,markersize=9))
        
     ax.set_xlim(left=7.5,right=24.0)
     ax.set_ylim(bottom=0.3,top=2.5)
     ax.set_xlabel("Radius [km]", size="20")
     ax.set_ylabel('Mass [M/M$_\odot$]', size="20")
-    ax.tick_params(axis='both', which='major', labelsize=10)     
+    ax.tick_params(axis='both', which='major', labelsize=10)  
+    ax.set_yticks(ticks=[0.5,1.0,1.5,2.0,2.5])
     ax.grid(True)
     ax.set_axisbelow(True)
     ax.legend(handles=legends, fontsize='9', loc='lower right')
     fig1.tight_layout()
+    plt.box(False)
     plt.show()
     
     plt.savefig("MR_NICER_data.png")
@@ -135,12 +137,7 @@ def plot_data_and_gaussian(mean, covariance, rv, data, ax, color= 'pink', name =
     return
 
 
-def mMax_likelihood(ax,alph,xlim,leg):
-    #m1, sigma1 = 2.14, 0.1
-    #m2, sigma2 = 2.01, 0.04
-    #m3, sigma3 = 1.908, 0.016
-    #m4, sigma4 = 2.16, 0.17
-    
+def mMax_likelihood(ax,alph,xlim,leg):    
     m = [2.14, 2.01, 1.908] #3 high-mass pulsars (Dietrich et al. 2020)
     sig = [0.1, 0.04, 0.016]
     names = ["J0740","J0348","J1614"]
@@ -151,19 +148,6 @@ def mMax_likelihood(ax,alph,xlim,leg):
     for i in np.arange(len(m)):
         ax.fill_between(x,(m[i]-sig[i])*np.ones(500),(m[i]+sig[i])*np.ones(500),color=colors[i],alpha=alph)#,label=names[i])
         leg.append(Patch(facecolor=colors[i], edgecolor=colors[i],label=names[i]))
-    
-    #plt.plot(x, norm(loc=m1, scale=sigma1).cdf(x), lw=3, label='PSR J0740+6620')
-    #plt.plot(x, norm(loc=m2, scale=sigma2).cdf(x), lw=3, color = 'black', label='PSR J0348+4032', linestyle = 'dashed')
-    #plt.plot(x, norm(loc=m3, scale=sigma3).cdf(x), lw=3, label='PSR J1614-2230', linestyle = 'dashdot')
-    #plt.plot(x, 1-norm(loc=m4, scale=sigma4).cdf(x), lw=3, label='GW170817/AT2017gfo', linestyle = 'dotted')
-
-    #plt.xlabel('M$_\mathrm{max}~ [\mathrm{M}_\odot]$')
-    #plt.ylabel('$\mathcal{L}$')
-    #plt.legend()
-    #plt.xlim(1.5, 2.8)
-    #plt.savefig('MR_likelihood_mMax_limit.pdf',format = 'pdf')
-    #plt.savefig('MR_likelihood_mMax_limit.png',format = 'png')
-    #plt.show()
 
 
 def buchdahl_BH_limits(ax, all = True):
