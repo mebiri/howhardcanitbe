@@ -50,7 +50,7 @@ def just_obs():
             stars.append(starfile[:5])
         else:
             stars.append(starfile.split(".")[0])
-        dat = np.genfromtxt(i)[:10000,:2]
+        dat = np.genfromtxt(i)[:,:2]
         print("len this file:",len(dat))
         #R = dat[:,0]
         #M = dat[:,1]
@@ -63,17 +63,20 @@ def just_obs():
     
         #ax.scatter(R,M,marker=".",label=starname)
     
-    from plotting import plot_data_and_gaussian
+    #from plotting import plot_data_and_gaussian
     #order:  ${J0030} ${J0437} ${J0740} ${J1731}
-    colors_list = ['red','orange','green','purple']
+    colors_list = ['green','purple','red','orange']
     for j in np.arange(len(dat_rv)):
         print("Plotting data for: ",stars[j])
         plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j],name=stars[j])
-        
-    #ax.set_xlim(left=8.0,right=24.0)
+    
+    buchdahl_BH_limits(ax,all=False)
+    mMax_likelihood(ax,0.3,24.0)
+    
+    ax.set_xlim(left=7.5,right=24.0)
     #ax.set_ylim(bottom=0.3,top=2.5)
-    ax.set_xlabel("Radius [km]", size="11")
-    ax.set_ylabel('Mass [M/M$_\odot$]', size="11")
+    ax.set_xlabel("Radius [km]", size="20")
+    ax.set_ylabel('Mass [M/M$_\odot$]', size="20")
     ax.tick_params(axis='both', which='major', labelsize=10)     
     ax.grid(True)
     ax.set_axisbelow(True)
@@ -100,6 +103,80 @@ def gaussian_distribution(data):
     rv = multivariate_normal([mn[a], mn[b]], [[cov[a,a], cov[a,b]], [cov[a,b], cov[b,b]]])
     
     return mn, cov, rv
+
+
+def plot_data_and_gaussian(mean, covariance, rv, data, ax, color= 'pink', name = 'samples', color_by_obs = False, alph=0.01):    
+    print(mean,covariance)
+    
+    lambda_, v = np.linalg.eig(covariance)
+    lambda_ = np.sqrt(lambda_)
+    a, b = 0,1
+    
+    # Check if the gradient actually looks like it should.
+    if color_by_obs:
+        #
+        raise Exception('not implemented yet. Check color gradiant on the scatter.')
+        color = None
+    else: pass
+    
+    ax.scatter(data[:,a], data[:,b], alpha=alph, s = 2, color = color, label = name,marker=".",linewidth=0)
+    #Ellipses for 1,2,3 sigma
+    from matplotlib.patches import Ellipse
+    for j in range(1, 4):
+        ell = Ellipse(xy=(mean[a], mean[b]), width=lambda_[a]*j*2, height=lambda_[b]*j*2, angle=np.rad2deg(np.arccos(v[a, a])), lw=1.2, facecolor='None', alpha=0.6, edgecolor= 'black')
+        # or try np.degrees(np.arctan2(*vecs[:,0][::-1])) for angle
+        ax.add_artist(ell)
+    
+    return
+
+
+def mMax_likelihood(ax,alph,xlim):
+    #m1, sigma1 = 2.14, 0.1
+    #m2, sigma2 = 2.01, 0.04
+    #m3, sigma3 = 1.908, 0.016
+    #m4, sigma4 = 2.16, 0.17
+    
+    m = [2.14, 2.01, 1.908] #3 high-mass pulsars (Dietrich et al. 2020)
+    sig = [0.1, 0.04, 0.016]
+    names = ["J0740","J0348","J1614"]
+    colors= ["green","yellow","blue"]
+    
+    x = np.linspace(7.5,xlim, 500)
+
+    for i in np.arange(len(m)):
+        ax.fill_between(x,(m[i]-sig[i])*np.ones(500),(m[i]+sig[i])*np.ones(500),color=colors[i],alpha=alph,label=names[i])
+    
+    #plt.plot(x, norm(loc=m1, scale=sigma1).cdf(x), lw=3, label='PSR J0740+6620')
+    #plt.plot(x, norm(loc=m2, scale=sigma2).cdf(x), lw=3, color = 'black', label='PSR J0348+4032', linestyle = 'dashed')
+    #plt.plot(x, norm(loc=m3, scale=sigma3).cdf(x), lw=3, label='PSR J1614-2230', linestyle = 'dashdot')
+    #plt.plot(x, 1-norm(loc=m4, scale=sigma4).cdf(x), lw=3, label='GW170817/AT2017gfo', linestyle = 'dotted')
+
+    #plt.xlabel('M$_\mathrm{max}~ [\mathrm{M}_\odot]$')
+    #plt.ylabel('$\mathcal{L}$')
+    #plt.legend()
+    #plt.xlim(1.5, 2.8)
+    #plt.savefig('MR_likelihood_mMax_limit.pdf',format = 'pdf')
+    #plt.savefig('MR_likelihood_mMax_limit.png',format = 'png')
+    #plt.show()
+
+
+def buchdahl_BH_limits(ax, all = True):
+    import lal
+    m = np.linspace(1.5,4.5, 300)
+    r = 2.824*m*lal.MRSUN_SI/1e3 #10.1146/annurev-nucl-102711-095018
+    ax.fill_between(r,m, 3*m, color='gainsboro',zorder=0)
+    if all:
+        r = 9*m/4*lal.MRSUN_SI/1e3 # 10.1103/PhysRevLett.121.161101
+        ax.fill_between(r,m, 3*m, color='lightgrey')
+        r = 2*m*lal.MRSUN_SI/1e3
+        ax.fill_between(r,m, 2*m, color='silver')
+    if all:
+        ax.text(9.0, 2.4, "Causality limit", rotation=35)
+        ax.text(8.0, 2.55, "Buchdahl limit", rotation=41)
+        ax.text(7.3, 2.7, "BH limit", rotation=45)
+    else:
+        ax.text(8.5, 2.1, "Causality limit", rotation=35)
+    return
 
 
 def obs_and_MR():
