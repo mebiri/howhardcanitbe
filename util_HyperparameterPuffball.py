@@ -28,18 +28,18 @@ parser.add_argument("--reflect-parameter",action='append',type=str)
 parser.add_argument("--regularize",action='store_true',help="Add some ad-hoc terms based on priors, to help with nearly-singular matricies")
 parser.add_argument("--use-rotated-spectral-coords",action='store_true',help="Apply rotated coord sys to spectral EOS params; from Wysocki 2020 https://arxiv.org/pdf/2001.01747")
 parser.add_argument("--downselect-mass-range",action='store_true',help="Reject points where m2 > m1 for population models (slightly hacky; prefer diff coord sys)")
-parser.add_argument("--rotated-coord-buffer",default=0.0,type=float,help="Fractional buffer (e.g., 0.1; default 0) to extend rotated hypercube space")
+parser.add_argument("--rotated-coord-buffer",default=0.0,type=float,help="Fractional buffer (e.g., 0.1; default 0) to extend rotated hypercube space (APPLIES AS % OF BOUND VALUE)")
+parser.add_argument("--reflect-parameters",action='store_true',help="Toggle parameter reflection, even if no --reflect-parameter provided (for rotated coord reflection)")
+parser.add_argument("--use-alternate-buffer",default=0.05,type=float,help="Buffer expands hypercube by x% of its full width (2x% total expansion), instead of by x% of bound value.")
+
+#to unlink downselect & reflection:
+parser.add_argument("--parameter-range",action='append',type=str)
+#for generalization:
+parser.add_argument("--supplementary-coordinate-code", default=None,type=str,help="Coordinate conversion/prior code. Accepts: the literal 'rift_default' (use RIFT.lalsimutils.convert_waveform_coordinates plus RIFT-standard priors); a filesystem path ending in .py (loaded as a plugin); or any importable dotted module name.")
+parser.add_argument("--supplementary-coordinate-function", default=None, type=str, help="Name of the entry-point callable inside the module named by --supplementary-coordinate-code. Defaults to 'convert_coordinates'.")
+
 opts=  parser.parse_args()
 
-#opts.inj_file = "grid_test.txt"
-#opts.puff_factor = 0.6
-#opts.parameter = ["gamma0", "gamma1","gamma2","gamma3","m1","m2"]
-#opts.downselect_parameter = ["m1","m2"]#["gamma0", "gamma1","gamma2","gamma3","m1","m2"]
-#opts.downselect_parameter_range = ["[1.0,3.0]", "[1.0,3.0]"] #["[0.2,2]","[-1.6,1.7]","[-0.6,0.6]","[-0.02,0.02]", "[1.0,3.0]", "[1.0,3.0]"] 
-#opts.use_rotated_spectral_coords = True
-#opts.downselect_mass_range = True
-#opts.rotated_coord_buffer = 0.1
-#opts.reflect_parameter = ["m1","m2"]
 
 if opts.random_parameter is None:
     opts.random_parameter = []
@@ -74,14 +74,14 @@ reflect_dict={}
 
 if opts.downselect_parameter:
     dlist = opts.downselect_parameter
-    dlist_ranges  = list(map(eval,opts.downselect_parameter_range))
-else:
+    dlist_ranges  = list(map(eval,opts.downselect_parameter_range)) #change to parameter_range
+else: #change to elif and put reflect_parameter code from below here
     dlist = []
     dlist_ranges = []
     opts.downselect_parameter =[]
-if len(dlist) != len(dlist_ranges):
+if len(dlist) != len(dlist_ranges): #check rlist as well
     print(" downselect parameters inconsistent", dlist, dlist_ranges)
-for indx in np.arange(len(dlist_ranges)):
+for indx in np.arange(len(dlist_ranges)): #probably generalize to a param_dict & plist
     downselect_dict[dlist[indx]] = dlist_ranges[indx]
 
 indx_reflect=[]
@@ -198,24 +198,30 @@ if opts.use_rotated_spectral_coords:
     
     for indx, param in enumerate(rot_coords.keys()):
         # apply hypercube buffer
-        ubound = rot_coords[param][1] + opts.rotated_coord_buffer*rot_coords[param][1]
-        lbound = rot_coords[param][0] + opts.rotated_coord_buffer*rot_coords[param][0]
-        if opts.reflect_parameter:
+        if opts.use_alternate_buffer: #new_bound = bound +/- buffer*(width of cube in param)
+            ubound = rot_coords[param][1] + opts.rotated_coord_buffer*abs(rot_coords[param][1]-rot_coords[param][0])
+            lbound = rot_coords[param][0] - opts.rotated_coord_buffer*abs(rot_coords[param][1]-rot_coords[param][0])
+        else:
+            ubound = rot_coords[param][1] + opts.rotated_coord_buffer*abs(rot_coords[param][1])
+            lbound = rot_coords[param][0] - opts.rotated_coord_buffer*abs(rot_coords[param][0])
+        if opts.reflect_parameters:
             # Reflection
             print("   Reflecting into range : {} [{}, {}]".format(param,lbound,ubound))
             # put in range [0,2 L]
-            tmp = rot_coords[param][0] + np.mod(r_prime[:,indx] - rot_coords[param][0], 2*(rot_coords[param][1] - rot_coords[param][0]) )
+            #tmp = rot_coords[param][0] + np.mod(r_prime[:,indx] - rot_coords[param][0], 2*(rot_coords[param][1] - rot_coords[param][0]) )
+            tmp = lbound + np.mod(r_prime[:,indx] - lbound, 2*(ubound - lbound) )
             # final reflection
-            tmp = np.where( tmp > rot_coords[param][1], 2*rot_coords[param][1] - tmp, tmp)
+            #tmp = np.where( tmp > rot_coords[param][1], 2*rot_coords[param][1] - tmp, tmp)
+            tmp = np.where( tmp > ubound, 2*ubound - tmp, tmp)
             r_prime[:,indx] = tmp 
         else:
-            # Downselection             
+            # Downselection
             #print(" Downselecting:",name,"; indx:",indx,"[",lbound,ubound,"]; buffer =",opts.rotated_coord_buffer)
             indx_ok = np.logical_and(indx_ok,  r_prime[:,indx]<= ubound )
             indx_ok = np.logical_and(indx_ok,  r_prime[:,indx]>= lbound )
             print('   Increment downselect : {} {} '.format(param, np.sum(indx_ok) ))
     
-    if opts.reflect_parameter:
+    if opts.reflect_parameters:
         #apply inverse: S-1*r_prime = S-1*S*r_tilde = r_tilde ( [4 x 4].([N x 4].T) )
         r_tilde_post = np.matmul(dan_inv,r_prime.T).T
         
