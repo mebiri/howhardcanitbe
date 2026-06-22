@@ -27,29 +27,56 @@ parser.add_argument('--scale-lnL',type=int,default=1,help="Scale factor to apply
 opts = parser.parse_args()
 
 def just_obs():
-    fig1 = plt.figure(figsize=(5,5),dpi=250) 
+    plt.rcParams.update({'font.size': 12.0,  'mathtext.fontset': 'stix'})
+    plt.rcParams['axes.unicode_minus'] = False
+    #plt.rcParams['figure.figsize'] = (9.0, 7.0)
+    plt.rcParams['xtick.labelsize'] = 15.0
+    plt.rcParams['ytick.labelsize'] = 15.0
+    plt.rcParams['axes.labelsize'] = 25.0
+    plt.rcParams['lines.linewidth'] = 2.0
+    
+    fig1 = plt.figure(figsize=(5,4),dpi=250) 
     ax = fig1.add_subplot(111)
     
+    dat_rv = [] #formerly external_ns_MR_rv
+    dat_mn = []   #only used for plotting
+    dat_cov = []  #only used for plotting
+    dat_list = [] #only used for plotting
+    stars = []    #only used for plotting
     for i in opts.obs_file:
         print("Retrieving data from file: "+i)
         starfile = i.split("/")[-1]
         if starfile[0] == 'J':
-            starname = i[:5]
+            stars.append(starfile[:5])
         else:
-            starname = starfile.split(".")[0]
-        dat = np.genfromtxt(i)
+            stars.append(starfile.split(".")[0])
+        dat = np.genfromtxt(i)[:10000,:2]
         print("len this file:",len(dat))
-        R = dat[:1000,0]
-        M = dat[:1000,1]
+        #R = dat[:,0]
+        #M = dat[:,1]
+        
+        mn, cov, rv = gaussian_distribution(dat)
+        dat_rv.append(rv)
+        dat_mn.append(mn)
+        dat_cov.append(cov)
+        dat_list.append(dat)  
     
-        ax.scatter(R,M,marker=".",label=starname)
+        #ax.scatter(R,M,marker=".",label=starname)
+    
+    from plotting import plot_data_and_gaussian
+    #order:  ${J0030} ${J0437} ${J0740} ${J1731}
+    colors_list = ['red','orange','green','purple']
+    for j in np.arange(len(dat_rv)):
+        print("Plotting data for: ",stars[j])
+        plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j],name=stars[j])
         
     #ax.set_xlim(left=8.0,right=24.0)
     #ax.set_ylim(bottom=0.3,top=2.5)
-    ax.set_xlabel("Radius (km)", size="11")
-    ax.set_ylabel('Mass (M/M$_\odot$)', size="11")
-    ax.tick_params(axis='both', which='major', labelsize=10) 
+    ax.set_xlabel("Radius [km]", size="11")
+    ax.set_ylabel('Mass [M/M$_\odot$]', size="11")
+    ax.tick_params(axis='both', which='major', labelsize=10)     
     ax.grid(True)
+    ax.set_axisbelow(True)
     ax.legend(fontsize='9', loc='lower right')
     fig1.tight_layout()
     plt.show()
@@ -165,9 +192,15 @@ def obs_and_MR():
     #fig,(ax1,ax2) = plt.subplots(2,1)
     
     fig = plt.figure(); ax = fig.add_subplot(111)
+    figname = "MR_NICER"
+    if opts.use_lnL: figname += "_lnL"
+    else: figname += "_likelihood"
+    for s in stars: figname += "_"+s
+    figname += "_field"
     
     if opts.data_on_top:
         ax.scatter(R,M,c=likelihood_array,marker=".")
+        figname += "_bottom"
 
     from plotting import plot_data_and_gaussian
     for j in np.arange(len(dat_rv)):
@@ -176,6 +209,7 @@ def obs_and_MR():
     
     if not opts.data_on_top:
         ax.scatter(R,M,c=likelihood_array,marker=".")
+        figname += "_top"
     
     lmax = max(likelihood_array)
     lmax_loc = np.where(likelihood_array == lmax)[0][0] #index(lmax)
@@ -193,8 +227,7 @@ def obs_and_MR():
     #ax.set_xlim(7,20)
     ax.set_xlabel('Radius [km]')
     ax.set_ylabel('Mass [M/M$_\odot$]')
-    
-    plt.savefig('MR_likelihood_sample_mMax_field.png',format = 'png')
+    plt.savefig(figname+'.png',format = 'png')
     
     plt.show()
 
