@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import multivariate_normal
 import argparse
+from matplotlib.lines import Line2D
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--obs-file', action='append', help="REQUIRED: Filenames/paths for observations to use.")
@@ -23,6 +24,8 @@ parser.add_argument('--field-M-max',type=float,default=2.1)
 parser.add_argument('--field-R-min',type=float,default=8)
 parser.add_argument('--field-R-max',type=float,default=18)
 parser.add_argument('--scale-lnL',type=int,default=1,help="Scale factor to apply to likelihood calcs (applied before log)")
+parser.add_argument('--plot-max',action='store-true')
+parser.add_argument('--plot-causality',action='store-true')
 
 opts = parser.parse_args()
 
@@ -35,7 +38,7 @@ def just_obs():
     plt.rcParams['axes.labelsize'] = 25.0
     plt.rcParams['lines.linewidth'] = 2.0
     
-    fig1 = plt.figure(figsize=(5,4),dpi=250) 
+    fig1 = plt.figure(figsize=(8,6),dpi=250) 
     ax = fig1.add_subplot(111)
     
     dat_rv = [] #formerly external_ns_MR_rv
@@ -52,8 +55,6 @@ def just_obs():
             stars.append(starfile.split(".")[0])
         dat = np.genfromtxt(i)[:,:2]
         print("len this file:",len(dat))
-        #R = dat[:,0]
-        #M = dat[:,1]
         
         mn, cov, rv = gaussian_distribution(dat)
         dat_rv.append(rv)
@@ -61,26 +62,28 @@ def just_obs():
         dat_cov.append(cov)
         dat_list.append(dat)  
     
-        #ax.scatter(R,M,marker=".",label=starname)
+    if opts.plot_max:
+        mMax_likelihood(ax,0.3,24.0)
+    if opts.plot_causality:
+        buchdahl_BH_limits(ax,all=False)
     
     #from plotting import plot_data_and_gaussian
-    #order:  ${J0030} ${J0437} ${J0740} ${J1731}
+    #order: ${J0740} ${J1731} ${J0030} ${J0437}  
     colors_list = ['green','purple','red','orange']
+    legends = []
     for j in np.arange(len(dat_rv)):
         print("Plotting data for: ",stars[j])
-        plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j],name=stars[j])
-    
-    buchdahl_BH_limits(ax,all=False)
-    mMax_likelihood(ax,0.3,24.0)
-    
+        plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j])#,name=stars[j])
+        legends.append(Line2D([0],[0],marker='o',color='w',label=stars[j],markerfacecolor=colors_list[j],markersize=15))
+       
     ax.set_xlim(left=7.5,right=24.0)
-    #ax.set_ylim(bottom=0.3,top=2.5)
+    ax.set_ylim(bottom=0.3,top=2.5)
     ax.set_xlabel("Radius [km]", size="20")
     ax.set_ylabel('Mass [M/M$_\odot$]', size="20")
     ax.tick_params(axis='both', which='major', labelsize=10)     
     ax.grid(True)
     ax.set_axisbelow(True)
-    ax.legend(fontsize='9', loc='lower right')
+    ax.legend(handles=legends, fontsize='9', loc='lower right')
     fig1.tight_layout()
     plt.show()
     
@@ -105,7 +108,7 @@ def gaussian_distribution(data):
     return mn, cov, rv
 
 
-def plot_data_and_gaussian(mean, covariance, rv, data, ax, color= 'pink', name = 'samples', color_by_obs = False, alph=0.01):    
+def plot_data_and_gaussian(mean, covariance, rv, data, ax, color= 'pink', name = None, color_by_obs = False, alph=0.01):    
     print(mean,covariance)
     
     lambda_, v = np.linalg.eig(covariance)
@@ -164,7 +167,7 @@ def buchdahl_BH_limits(ax, all = True):
     import lal
     m = np.linspace(1.5,4.5, 300)
     r = 2.824*m*lal.MRSUN_SI/1e3 #10.1146/annurev-nucl-102711-095018
-    ax.fill_between(r,m, 3*m, color='gainsboro',zorder=0)
+    ax.fill_between(r,m, 3*m, color='gainsboro')
     if all:
         r = 9*m/4*lal.MRSUN_SI/1e3 # 10.1103/PhysRevLett.121.161101
         ax.fill_between(r,m, 3*m, color='lightgrey')
