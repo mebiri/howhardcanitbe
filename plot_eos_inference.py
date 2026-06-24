@@ -49,7 +49,7 @@ matplotlib.rcParams['legend.loc'] = 'lower right'
 
 parser = argparse.ArgumentParser()
 #eos arguments
-parser.add_argument('--eos-file',action='append',help='REQUIRED, even if loading pyr dat! The last shall be first (top layer), and the first shall be last (bottom)',required=True)
+parser.add_argument('--eos-file',action='append',help='REQUIRED, even if loading pyr dat! The last shall be first (top layer), and the first shall be last (bottom)')
 parser.add_argument('--num-eos', default=1,type=int,help="Number of lines of each posterior file to plot EOS curves for (starts at 0). Enter 0 to do all lines (use draw_eos with this)")
 parser.add_argument('--draw-eos',default=500,help="Number of random EOS to interpolate from posterior file, if file length > provided value")
 parser.add_argument('--load-pyr-obj-dir',action='append',type=str,default=None,help="Dir(s)/basename(s) containing pyr objects to load for MR plot (create using NICER code with --save-pyr in Hyperpipe)")
@@ -253,14 +253,18 @@ if opts.load_pyr_dat_dir:
     for i in np.arange(len(opts.load_pyr_dat_dir)):
         num_files = 0
         if opts.plot_pd:
+            print("Searching for files:",opts.load_pyr_dat_dir[i]+"*_pressure-density_*.txt")
             all_pd_files = glob.glob(opts.load_pyr_dat_dir[i]+"*_pressure-density_*.txt")
             num_files = len(all_pd_files)
             print("Collected",len(all_pd_files),"pressure-density files.")
         if opts.plot_mr:
+            print("Searching for files:",opts.load_pyr_dat_dir[i]+"*_mass-radius_*.txt")
             all_mr_files = glob.glob(opts.load_pyr_dat_dir[i]+"*_mass-radius_*.txt")
             num_files = len(all_mr_files)
             print("Collected",len(all_mr_files),"mass-radius files.")
         
+        #if num_files == 0: #usually won't work
+        #    print("ERROR: no files found.")
         #compare lengths if both present
         if opts.plot_pd and opts.plot_mr:
             if len(all_pd_files) != len(all_mr_files):
@@ -281,10 +285,10 @@ if opts.load_pyr_dat_dir:
         
         #save indexed file lists to dict/list for access below
         if opts.plot_pd:
-            all_pd_files = all_pd_files[lines_to_use]
+            all_pd_files = np.array(all_pd_files)[lines_to_use]
             files_list_pd.append(all_pd_files)
         if opts.plot_mr:
-            all_mr_files = all_mr_files[lines_to_use]
+            all_mr_files = np.array(all_mr_files)[lines_to_use]
             files_list_mr.append(all_mr_files)
         lines_to_use_list.append(lines_to_use) #don't need this here, really         
 elif opts.eos_file:
@@ -407,11 +411,13 @@ if opts.plot_pd:
     dpi_base=200
     res_base = 4*dpi_base
     if opts.plot_pd_name:
-        save_name = opts.plot_pd_name
+        save_name = opts.plot_pd_name+"_PD"
     else:
         save_name = "EOS_PDplot"
-        for e in opts.eos_file:
-            save_name += "_"+e.split("/")[-1].split(".")[0]
+        if opts.eos_file:
+            for e in opts.eos_file:
+                save_name += "_"+e.split("/")[-1].split(".")[0]
+        #should probably have other options here
     plt.savefig(save_name+fig_extension,dpi=res_base)
     plt.show()
     print("EOS pressure-density figure saved as "+save_name+fig_extension)
@@ -554,11 +560,13 @@ if opts.plot_mr:
     res_base = 4*dpi_base
     plt.tight_layout()
     if opts.plot_mr_name:
-        save_name = opts.plot_mr_name
+        save_name = opts.plot_mr_name+"_MR"
     else:
         save_name = "EOS_MRplot"
-        for e in opts.eos_file:
-            save_name += "_"+e.split("/")[-1].split(".")[0]
+        if opts.eos_file:
+            for e in opts.eos_file:
+                save_name += "_"+e.split("/")[-1].split(".")[0]
+        #should maybe have other default opts here?
     plt.savefig(save_name+fig_extension,dpi=res_base)
     plt.show()
     print("EOS mass-radius figure saved as "+save_name+fig_extension)
