@@ -18,7 +18,7 @@ import argparse
 import sys
 import copy
 import glob
-from scipy.interpolate import UnivariateSpline, PchipInterpolator
+from scipy.interpolate import UnivariateSpline, PchipInterpolator, interp1d
 
 import RIFT.physics.EOSManager as EOSManager
 import RIFT.plot_utilities.EOSPlotUtilities as eosplot
@@ -199,7 +199,8 @@ def eval_pyr_dat_list(pyr_list, xvar='energy_density', xgrid=None,yvar='pressure
         if use_monotonic:
             intp_func = PchipInterpolator(np.log(xvals),np.log(yvals))
         else:
-            intp_func = UnivariateSpline(np.log(xvals),np.log(yvals))
+            #intp_func = UnivariateSpline(np.log(xvals),np.log(yvals))
+            intp_func = interp1d(np.log(xvals),np.log(yvals))
         ygrid = np.exp(intp_func(np.log(xgrid)))
         outvals[:,indx] = ygrid
 
@@ -502,10 +503,10 @@ if opts.plot_mr:
             plot_opts = copy.deepcopy(plot_opts_list[i]) #technically not needed, since last plot
             fill_opts = copy.deepcopy(fill_opts_list[i])            
             
-            plt.plot(lower_vals, ygrid_here, plot_opts)
+            plt.plot(lower_vals, ygrid_here, **plot_opts)
             plot_opts['label'] = ''
-            plt.plot(upper_vals, ygrid_here, plot_opts)
-            plt.fill_betweenx(ygrid_here, lower_vals,upper_vals,fill_opts)
+            plt.plot(upper_vals, ygrid_here, **plot_opts)
+            plt.fill_betweenx(ygrid_here, lower_vals,upper_vals,**fill_opts)
     else:
         print("Big problems, buddy. Asked for an MR plot but didn't say how.")
 
