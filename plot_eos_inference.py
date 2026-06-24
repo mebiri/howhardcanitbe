@@ -17,6 +17,8 @@ import numpy as np
 import argparse
 import sys
 import copy
+import glob
+from scipy.interpolate import UnivariateSpline, PchipInterpolator
 
 import RIFT.physics.EOSManager as EOSManager
 import RIFT.plot_utilities.EOSPlotUtilities as eosplot
@@ -64,6 +66,7 @@ parser.add_argument('--fill-color',action='append',help="Fill colors for region 
 parser.add_argument('--plot-pd-name',type=str,default=None,help='Filename for the pressure vs. density plot')
 parser.add_argument('--plot-mr-name',type=str,default=None,help='Filename for the mass vs. radius plot')
 parser.add_argument('--show-grid',action='store_true',help="Show gridlines on plot; for MR plot only, right now")
+parser.add_argument('--fill-alpha',type=float,default=0.1,help="Alpha value for shaded regions. Default is 0.1; set to 0 where no --fill-color provided.")
 
 parser.add_argument('--verbose', action = 'store_true', help = 'Print information on the progress of the code')
 
@@ -179,6 +182,30 @@ def build_eos_sequence(filename, lines):
         return None
 
 
+#Modified from EOSPlotUtilities.eval_eos_list_vs - only good for PD plots
+def eval_pyr_dat_list(pyr_list, xvar='energy_density', xgrid=None,yvar='pressure', units='cgs',use_monotonic=True):
+    if xgrid is None:
+        raise Exception(" EOSPlotUtilities: none passed for grid")
+    n_eos = len(pyr_list)
+    npts = len(xgrid)
+    # LARGE ALLOCATION potentially, so watch out -- usually I just need quantiles
+    outvals = np.zeros((npts,n_eos))
+    # loop and compute -- ideally parallelize! Silly to do serialy
+    for indx in np.arange(n_eos):
+        # Pull out on grid  
+        xvals = pyr_list[indx][:,0] #xvar col -> can be generalized
+        yvals = pyr_list[indx][:,1] #yvar col
+        # interpolate to target grid.   Usually interpolate log x to log y.  Assume INCREASING sample array. LINEAR interpolation
+        if use_monotonic:
+            intp_func = PchipInterpolator(np.log(xvals),np.log(yvals))
+        else:
+            intp_func = UnivariateSpline(np.log(xvals),np.log(yvals))
+        ygrid = np.exp(intp_func(np.log(xgrid)))
+        outvals[:,indx] = ygrid
+
+    return outvals
+
+
 #ported from EOSPlotUtilities for modifications
 def render_eos_list_quantiles_vs(eos_list, quantile_bounds=None, xvar='energy_density', xgrid=None,yvar='pressure', units='cgs',use_monotonic=True,use_log=True,return_outvals=False,input_outvals=None,show_traces=False,plot_kwargs={},fill_kwargs={}):
     outvals_here=None
@@ -215,30 +242,79 @@ def render_eos_list_quantiles_vs(eos_list, quantile_bounds=None, xvar='energy_de
 
 
 lines_to_use_list = []
+files_list_pd = []
+files_list_mr = []
 plot_opts_list = []
 fill_opts_list = []
-for i in np.arange(len(opts.eos_file)):
-    #NEED to do this regardless, for consistency of random lines
-    #See how many lines of data there are:
-    if opts.num_eos == 0:
-        dat = np.genfromtxt(opts.eos_file[i])[:,0]
-    else:
-        dat = np.genfromtxt(opts.eos_file[i])[:opts.num_eos,0]
+#if opts.eos_file:
+#    num_files = len(opts.eos_file)
+if opts.load_pyr_dat_dir:
+    #make use of the available data to draw lines, not draw lines & hope the data exists
+    for i in np.arange(len(opts.load_pyr_dat_dir)):
+        num_files = 0
+        if opts.plot_pd:
+            all_pd_files = glob.glob(opts.load_pyr_dat_dir[i]+"*_pressure-density_*.txt")
+            num_files = len(all_pd_files)
+            print("Collected",len(all_pd_files),"pressure-density files.")
+        if opts.plot_mr:
+            all_mr_files = glob.glob(opts.load_pyr_dat_dir[i]+"*_mass-radius_*.txt")
+            num_files = len(all_mr_files)
+            print("Collected",len(all_mr_files),"mass-radius files.")
+        
+        #compare lengths if both present
+        if opts.plot_pd and opts.plot_mr:
+            if len(all_pd_files) != len(all_mr_files):
+                print("ERROR: inconsistent number of PD & MR files!")
+                #not sure what to do here; continue?
+                num_files = min(len(all_pd_files),len(all_mr_files)) #PROBLEM: if either is 0
+                lines_to_use_list.append([0])
+                continue
+        
+        #draw random lines, as below
+        if (int(opts.draw_eos) != 0) and (num_files >= int(opts.draw_eos)):
+            lines_to_use = np.random.choice(num_files,size=int(opts.draw_eos),replace=False)
+            print("Drawing",len(lines_to_use),"random lines from this file.")
+            #if opts.verbose: print("Length of dat is now:",len(dat))
+        else:
+            print("Using all lines from this file; total:",num_files)
+            lines_to_use = np.arange(num_files) #needed to get pyr files
+        
+        #save indexed file lists to dict/list for access below
+        if opts.plot_pd:
+            all_pd_files = all_pd_files[lines_to_use]
+            files_list_pd.append(all_pd_files)
+        if opts.plot_mr:
+            all_mr_files = all_mr_files[lines_to_use]
+            files_list_mr.append(all_mr_files)
+        lines_to_use_list.append(lines_to_use) #don't need this here, really         
+elif opts.eos_file:
+    if opts.plot_mr and (opts.load_pyr_obj_dir is None):
+        print("ERROR: no supplied paths to MR data for requested MR plot. Will not generate!")
+        opts.plot_mr = False
     
-    print("Initial data length for file:",len(dat))
-    
-    if (int(opts.draw_eos) != 0) and (len(dat) > int(opts.draw_eos)):
-        lines_to_use = np.random.choice(len(dat),size=int(opts.draw_eos),replace=False)
-        print("Drawing",len(lines_to_use),"random lines from this file.")
-        dat = dat[lines_to_use]
-        if opts.verbose: print("Length of dat is now:",len(dat))
-    else:
-        print("Using all lines from this file; total:",len(dat))
-        lines_to_use = np.arange(len(dat)) #needed to get pyr files
-    lines_to_use_list.append(lines_to_use)
-    
-    if opts.verbose: print("First line of data:\n",dat[0])
-    
+    for i in np.arange(len(opts.eos_file)):
+        #NEED to do this regardless, for consistency of random lines
+        #See how many lines of data there are:
+        if opts.num_eos == 0:
+            dat = np.genfromtxt(opts.eos_file[i])[:,0]
+        else:
+            dat = np.genfromtxt(opts.eos_file[i])[:opts.num_eos,0]
+        
+        print("Initial data length for file:",len(dat))
+        
+        if (int(opts.draw_eos) != 0) and (len(dat) > int(opts.draw_eos)):
+            lines_to_use = np.random.choice(len(dat),size=int(opts.draw_eos),replace=False)
+            print("Drawing",len(lines_to_use),"random lines from this file.")
+            dat = dat[lines_to_use]
+            if opts.verbose: print("Length of dat is now:",len(dat))
+        else:
+            print("Using all lines from this file; total:",len(dat))
+            lines_to_use = np.arange(len(dat)) #needed to get pyr files
+        lines_to_use_list.append(lines_to_use)
+        
+        if opts.verbose: print("First line of data:\n",dat[0])
+
+for i in np.arange(max([len(opts.eos_label),len(opts.fill_color),len(opts.eos_color)])):
     #gather plot stuff together:
     label_here = None
     plot_opts_here = {}
@@ -247,7 +323,8 @@ for i in np.arange(len(opts.eos_file)):
         label_here = opts.eos_label[i].replace("_"," ")
     if opts.fill_color and len(opts.fill_color) > i:
         fill_opts_here['color'] = opts.fill_color[i] 
-        fill_opts_here['alpha'] = 0.1
+        fill_opts_here['alpha'] = opts.fill_alpha
+        plot_opts_here['alpha'] = 0.0 #transparent line, hopefully
     else:
         fill_opts_here['alpha'] = 0.0 #transparent
     if opts.eos_color and len(opts.eos_color) > i:
@@ -262,7 +339,7 @@ for i in np.arange(len(opts.eos_file)):
 
 print("Plot options collected:\n",plot_opts_list,"\n",fill_opts_list)
 
-if opts.render_eos_objects: #directly render all eos in provided range using their own axes
+if opts.render_eos_objects and opts.eos_file: #directly render all eos in provided range using their own axes
     for i in np.arange(len(opts.eos_file)):
         my_eos_list = build_eos_sequence(opts.eos_file[i],lines_to_use_list[i])
         if my_eos_list is None:
@@ -278,23 +355,48 @@ if opts.render_eos_objects: #directly render all eos in provided range using the
     plt.savefig("test_eos_pd_plot"+fig_extension,dpi=res_base)
     print("EOS figure saved.")
     sys.exit(0)
-    
+
+
+############################  PRESSURE-DENSITY PLOT  ##########################
 if opts.plot_pd: 
     print("Creating pressure-density figure...")
-    for i in np.arange(len(opts.eos_file)): 
-        my_eos_list = build_eos_sequence(opts.eos_file[i],lines_to_use_list[i])
+    if opts.load_pyr_dat_dir: 
+        print("Not implemented yet")
+        for i in np.arange(len(files_list_pd)):
+            # go through file list & render (may need custom function - can make shared fig if so)
+            eos_list = []
+            for filename in files_list_pd[i]:
+                try:
+                    dat_here = np.genfromtxt(filename)[:,[1,3]] #rest_mass_density, pressure
+                    #param_names = dat.dtype.names #separate out the names from the data
+                    #all_params = dat.view((float, len(param_names)))
+                except Exception as e:
+                    print("Error: could not open file",filename,":",e)
+                    continue
+                eos_list.append(dat_here) #will become very large, possibly ragged 3D array (list of 2D Nx2 arrays)
+            print("EOS list total:",len(eos_list))
             
-        if my_eos_list is None: 
-            print("ERROR: no valid EOSs were created for this file.")
-            continue 
-        else:
-            print("EOS list total:",len(my_eos_list))
-            density_grid = 10**np.linspace(14,16,200) #need to choose good range of densities
+            density_grid = 10**np.linspace(14,16,200)
+            ydat = eval_pyr_dat_list(eos_list, xgrid=density_grid) 
             
             plot_opts = copy.deepcopy(plot_opts_list[i])
             fill_opts = copy.deepcopy(fill_opts_list[i])
-            render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts)
-        
+            render_eos_list_quantiles_vs(eos_list=None, quantile_bounds=[0.05,0.95], xgrid=density_grid,input_outvals=ydat,plot_kwargs=plot_opts,fill_kwargs=fill_opts)
+    else:
+        for i in np.arange(len(opts.eos_file)): 
+            my_eos_list = build_eos_sequence(opts.eos_file[i],lines_to_use_list[i])
+                
+            if my_eos_list is None: 
+                print("ERROR: no valid EOSs were created for this file.")
+                continue 
+            else:
+                print("EOS list total:",len(my_eos_list))
+                density_grid = 10**np.linspace(14,16,200) #need to choose good range of densities
+                
+                plot_opts = copy.deepcopy(plot_opts_list[i])
+                fill_opts = copy.deepcopy(fill_opts_list[i])
+                render_eos_list_quantiles_vs(my_eos_list, quantile_bounds=[0.05,0.95], xvar='rest_mass_density', xgrid=density_grid,yvar='pressure',use_log=True,plot_kwargs=plot_opts,fill_kwargs=fill_opts)
+            
     print("All pressure-density EOS rendered.")
     plt.xlabel(r"log$_{10}\, \rho$ [g cm$^{-3}$]")
     plt.ylabel(r"log$_{10}\, P$ [dyn cm$^{-2}$]")
@@ -314,17 +416,21 @@ if opts.plot_pd:
     plt.show()
     print("EOS pressure-density figure saved as "+save_name+fig_extension)
 
+
+############################  MASS-RADIUS PLOT  ###############################
 if opts.plot_mr:
+    #if not opts.plot_shared_figure:
     plt.clf()
     print("Creating mass-radius figure...")
     import pyreprimand as pyr
-    import glob
     import lal
+    from pathlib import Path
     mass_range = None
-    for i in np.arange(len(opts.eos_file)): 
-        if opts.load_pyr_obj_dir:
+    if opts.load_pyr_obj_dir:
+        for i in np.arange(len(opts.eos_file)): 
             #fetch pyr object files matching lines_to_use indices
             #opts = "path/MARG-0-"
+            #WARNING: this doesn't work correctly if there are files missing!
             chunk_files = glob.glob(opts.load_pyr_obj_dir[i]+"0_reprimand.tov.seq_*.h5")
             nchunk = len(chunk_files)
             eos_sequence = []
@@ -334,8 +440,12 @@ if opts.plot_mr:
                 else:
                     loadname = opts.load_pyr_obj_dir[i]+str(j-(j%nchunk))+"_reprimand.tov.seq_"+str(j%nchunk)+".h5"
                 try:
-                    tov_seq_reprimand = pyr.load_star_branch(loadname, pyr.units.geom_solar(msun_si=lal.MSUN_SI))
-                    eos_sequence.append(tov_seq_reprimand)
+                    exists = Path(loadname)
+                    if exists.is_file():
+                        tov_seq_reprimand = pyr.load_star_branch(loadname, pyr.units.geom_solar(msun_si=lal.MSUN_SI))
+                        eos_sequence.append(tov_seq_reprimand)
+                    else:
+                        raise Exception()
                 except:
                     print(" WARNING: could not find file: "+loadname)
                     continue
@@ -346,45 +456,90 @@ if opts.plot_mr:
             eosplot.render_reprimand_tovsequence_list_quantiles_vs(eos_sequence, quantile_bounds=[0.05,0.95], 
                                                                    xvar='radius', yvar='mass', range_mass='[0.7,2.5]', 
                                                                    percentile_method = 'use nan percentile', plot_kwargs=plot_opts, fill_kwargs=fill_opts)
-        elif opts.load_pyr_dat_dir:
+    elif opts.load_pyr_dat_dir:
+        for i in np.arange(len(files_list_mr)):
             print(" WARNING: using pyr dat not fully implemented or tested. Use with caution!")
-            from scipy.interpolate import UnivariateSpline, PchipInterpolator
             #load .txt files of pyr dat
             #opts = "path/MARG-0-"
-            eos_dat = []
-            for j in lines_to_use:
-                #if opts.plot_pd: - can't use this
-                #    dat_here = np.loadtxt(opts.load_pyr_dat_dir+str(j)+"_pressure-density_"+str(j)+".txt")
-                #    #do something with this
-                #if opts.plot_mr:
-                dat_here = np.loadtxt(opts.load_pyr_dat_dir[i]+str(j)+"_mass-radius_"+str(j)+".txt")[:,:2]
-                #mass = 0, radius = 1
-                eos_dat.append(dat_here) #will become very large, possibly ragged 3D array (list of 2D Nx2 arrays)
-            
-            r_grid = np.linspace(8,20,1200) #0.01 resolution, same as pd plot
-            npts = len(r_grid)
-            #    print(npts,n_eos)
-            # LARGE ALLOCATION potentially, so watch out -- usually I just need quantiles
-            outvals  = np.zeros((npts,len(eos_dat)))
+            # go through file list & render (may need custom function - can make shared fig if so)
+            eos_list = []
+            for filename in files_list_mr[i]:
+                try:
+                    dat_here = np.genfromtxt(filename)[:,:2] #mass, radius
+                    #param_names = dat.dtype.names #separate out the names from the data
+                    #all_params = dat.view((float, len(param_names)))
+                except Exception as e:
+                    print("Error: could not open file",filename,":",e)
+                    continue
+                #switch m, r cols so x = r, y = m
+                #dat_switched = np.array([dat_here[:,1],dat_here[:,0]]).T
+                eos_list.append(dat_here) #will become very large, possibly ragged 3D array (list of 2D Nx2 arrays)
+            print("EOS list total:",len(eos_list))
 
-            for indx in np.arange(len(eos_dat)):
-                if True:
-                    intp_func = PchipInterpolator(np.log(eos_dat[indx][:,1]),np.log(eos_dat[indx][:,0]))
-                else:
-                    intp_func = UnivariateSpline(np.log(eos_dat[indx][:,1]),np.log(eos_dat[indx][:,0]))
-                ygrid = np.exp(intp_func(np.log(r_grid)))
-                outvals[:,indx] = ygrid
+            #adapted from EOSPlotUtilities.render_reprimand_tovsequence_list_quantiles_vs            
+            mass_range=[0.7,2.5]
+            #range_mass = eval(range_mass)
+            mg = np.linspace(mass_range[0], mass_range[1], 1000) #1D array
+            #rc = np.zeros( (len(mg),len(eos_list))) #ND array, cf: outvals = np.zeros((npts,n_eos))
             
-            xgrid_here = np.array(r_grid)
-            upper_vals = np.percentile(outvals,quant_bounds[0]*100,1)
-            lower_vals = np.percentile(outvals,quant_bounds[1]*100,1)
-            mass_range = [min(upper_vals),max(upper_vals)]
+            #No idea if this will work:
+            rc = eval_pyr_dat_list(eos_list, xgrid=mg, use_monotonic=False) 
+            #mass_range = [min(upper_vals),max(upper_vals)] - need this somehow
+            #rc[:,i] = sequence_list[i].circ_radius_from_grav_mass(mg) #fill ND array in loop: R_i(M) for all M, for all i EOS
+            # Remove EoSs which have unreasonably large radii from this analysis
+            rc = np.delete(rc, np.where(rc > 50)[1], 1)
             
-            plot_opts = plot_opts_list[i]
-            plt.plot(xgrid_here, upper_vals, plot_opts)
+            ygrid_here = np.array(mg) #masses are 1D yvals
+            lower_vals = np.nanpercentile(rc,0.05*100,1) #get percentile of R
+            upper_vals = np.nanpercentile(rc,0.95*100,1)
+            
+            plot_opts = copy.deepcopy(plot_opts_list[i]) #technically not needed, since last plot
+            fill_opts = copy.deepcopy(fill_opts_list[i])            
+            
+            plt.plot(lower_vals, ygrid_here, plot_opts)
             plot_opts['label'] = ''
-            plt.plot(xgrid_here, lower_vals, plot_opts)
-            plt.fill_between(xgrid_here, lower_vals,upper_vals,fill_opts_list[i])    
+            plt.plot(upper_vals, ygrid_here, plot_opts)
+            plt.fill_betweenx(ygrid_here, lower_vals,upper_vals,fill_opts)
+    else:
+        print("Big problems, buddy. Asked for an MR plot but didn't say how.")
+
+# =============================================================================
+#             eos_dat = []
+#             for j in lines_to_use:
+#                 #if opts.plot_pd: - can't use this
+#                 #    dat_here = np.loadtxt(opts.load_pyr_dat_dir+str(j)+"_pressure-density_"+str(j)+".txt")
+#                 #    #do something with this
+#                 #if opts.plot_mr:
+#                 dat_here = np.loadtxt(opts.load_pyr_dat_dir[i]+str(j)+"_mass-radius_"+str(j)+".txt")[:,:2]
+#                 #mass = 0, radius = 1
+#                 eos_dat.append(dat_here) #will become very large, possibly ragged 3D array (list of 2D Nx2 arrays)
+#             
+#             #BELOW IS BAD - copy reprimand code instead! No interpolation for MR!
+#             r_grid = np.linspace(8,20,1200) #0.01 resolution, same as pd plot
+#             npts = len(r_grid)
+#             #    print(npts,n_eos)
+#             # LARGE ALLOCATION potentially, so watch out -- usually I just need quantiles
+#             outvals  = np.zeros((npts,len(eos_dat)))
+# 
+#             for indx in np.arange(len(eos_dat)):
+#                 if True:
+#                     intp_func = PchipInterpolator(np.log(eos_dat[indx][:,1]),np.log(eos_dat[indx][:,0]))
+#                 else:
+#                     intp_func = UnivariateSpline(np.log(eos_dat[indx][:,1]),np.log(eos_dat[indx][:,0]))
+#                 ygrid = np.exp(intp_func(np.log(r_grid)))
+#                 outvals[:,indx] = ygrid
+#             
+#             xgrid_here = np.array(r_grid)
+#             upper_vals = np.percentile(outvals,quant_bounds[0]*100,1)
+#             lower_vals = np.percentile(outvals,quant_bounds[1]*100,1)
+#             
+#             
+#             plot_opts = plot_opts_list[i]
+#             plt.plot(xgrid_here, upper_vals, plot_opts)
+#             plot_opts['label'] = ''
+#             plt.plot(xgrid_here, lower_vals, plot_opts)
+#             plt.fill_between(xgrid_here, lower_vals,upper_vals,fill_opts_list[i])    
+# =============================================================================
     
     print("All mass-radius EOS rendered.")
     plt.xlabel("$R$ [km]")
