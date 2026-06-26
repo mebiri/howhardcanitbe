@@ -4,21 +4,24 @@ Code for making P vs. rho and M vs. R EOS inference plots for hyperpipe
 Utilizes RIFT.plot_utilities.EOSPlotUtilities, although uses locally-improved
 versions of some of those functions.
 
-Minimal input is the path to the posterior files the user wants plotted,
-flags corresponding to which plots to make, and the number of EOS lines from
-each file to use (num-eos: either total lines on plot, or lines use to interp).
-User can also provide labels, line colors, and fill colors for each posterior.
-
-To make P vs. rho plots, must supply eos_file(s)
-To make M vs. R plots, must have pyreprimand installed and supply pyr objects
-for each EOS in the eos_file(s) (pyr data files not yet supported)
+OPTIONS:
+    P(p): supply eos grid files via --eos-file 
+    M(R): supply pyr object files via --load-pyr-obj-dir (directory of .h5 files)
+    ALT: supply pyr pressure-density & mass-radius data files via --load-pyr-dat-dir 
+         (directory) - N.B. M(R) plots will be oversmoothed in this method - avoid!
+    
+PLOT CONFIG:
+    --eos-label: name for data; use "_" as spaces - they will be auto-replaced
+    --eos-color: line color for data; use "white" for no line & label on filled region
+    --fill-color: fill color for regions (only works for first file if rest are lines)
+    --fill-alpha: transparency for filled regions; set to 0 for no fill
 '''
 import numpy as np
 import argparse
 import sys
 import copy
 import glob
-from scipy.interpolate import UnivariateSpline, PchipInterpolator, interp1d
+from scipy.interpolate import UnivariateSpline, PchipInterpolator#, interp1d
 
 import RIFT.physics.EOSManager as EOSManager
 import RIFT.plot_utilities.EOSPlotUtilities as eosplot
@@ -182,7 +185,7 @@ def build_eos_sequence(filename, lines):
         return None
 
 
-#Modified from EOSPlotUtilities.eval_eos_list_vs - only good for PD plots
+#Modified from EOSPlotUtilities.eval_eos_list_vs
 def eval_pyr_dat_list(pyr_list, xvar='energy_density', xgrid=None,yvar='pressure', units='cgs',use_monotonic=True):
     if xgrid is None:
         raise Exception(" EOSPlotUtilities: none passed for grid")
@@ -198,9 +201,9 @@ def eval_pyr_dat_list(pyr_list, xvar='energy_density', xgrid=None,yvar='pressure
         # interpolate to target grid.   Usually interpolate log x to log y.  Assume INCREASING sample array. LINEAR interpolation
         if use_monotonic:
             intp_func = PchipInterpolator(np.log(xvals),np.log(yvals))
-        else:
-            #intp_func = UnivariateSpline(np.log(xvals),np.log(yvals))
-            intp_func = interp1d(np.log(xvals),np.log(yvals))
+        else: # - use for MR plots: WARNING: DOES NOT WORK
+            intp_func = UnivariateSpline(np.log(xvals),np.log(yvals)) #OVERSMOOTHS
+            #intp_func = interp1d(np.log(xvals),np.log(yvals)) #crashes
         ygrid = np.exp(intp_func(np.log(xgrid)))
         outvals[:,indx] = ygrid
 
@@ -266,7 +269,7 @@ if opts.load_pyr_dat_dir:
         
         #if num_files == 0: #usually won't work
         #    print("ERROR: no files found.")
-        #compare lengths if both present
+        #TODO: compare lengths if both present
         if opts.plot_pd and opts.plot_mr:
             if len(all_pd_files) != len(all_mr_files):
                 print("ERROR: inconsistent number of PD & MR files!")
@@ -278,7 +281,6 @@ if opts.load_pyr_dat_dir:
         if (int(opts.draw_eos) != 0) and (num_files >= int(opts.draw_eos)):
             lines_to_use = np.random.choice(num_files,size=int(opts.draw_eos),replace=False)
             print("Drawing",len(lines_to_use),"random lines from this file.")
-            #if opts.verbose: print("Length of dat is now:",len(dat))
         else:
             print("Using all lines from this file; total:",num_files)
             lines_to_use = np.arange(num_files) #needed to get pyr files
@@ -305,20 +307,21 @@ elif opts.eos_file or opts.load_pyr_obj_dir:
                 valid_indx[f] = int(name_bits[0].split("-")[-1]) + int(name_bits[2][0])
             
             print("Length of valid .h5 files collected:",len(valid_indx))
+            valid_indx = valid_indx.astype(int)
         
             if (int(opts.draw_eos) != 0) and (len(valid_indx) > int(opts.draw_eos)):
-                lines_to_use = np.random.choice(valid_indx,size=int(opts.draw_eos),replace=False)
+                lines_to_use = np.random.choice(len(valid_indx),size=int(opts.draw_eos),replace=False)
                 print("Drawing",len(lines_to_use),"random lines from this file.")
             else:
                 print("Using all collected lines from this file; total:",len(h5_files))
-                lines_to_use = valid_indx 
+                lines_to_use = np.arange(len(valid_indx)) 
             files_list_mr.append(np.array(h5_files)[lines_to_use]) #list of FILEPATHS
-            lines_to_use_list.append(lines_to_use) #for eos_files
+            lines_to_use_list.append(valid_indx[lines_to_use]) #save line numbers for eos_files
         
-            #need to assert len(eos_files) == len(pyr_obj_dirs)
+            #TODO: need to assert len(eos_files) == len(pyr_obj_dirs)
         
         if False: #opts.eos_file and (len(lines_to_use_list) > 0):
-            #just make sure lines_to_use doesn't exceed length of eos_file - shouldn't happen
+            #TODO: make sure lines_to_use doesn't exceed length of eos_file - shouldn't happen
             for i in np.arange(len(opts.eos_file)):
                 dat = np.genfromtxt(opts.eos_file[i])[:,0]
                 if len(dat) < lines_to_use_list[i][-1]:
@@ -352,7 +355,11 @@ else:
 
 
 #gather plot stuff together
-for i in np.arange(max([len(opts.eos_label),len(opts.fill_color),len(opts.eos_color)])): 
+fills = labels = colors = 0
+if opts.fill_color: fills = len(opts.fill_color)
+if opts.eos_label: labels = len(opts.eos_label)
+if opts.eos_color: colors = len(opts.eos_color)
+for i in np.arange(max([labels,fills,colors])): 
     label_here = None
     plot_opts_here = {}
     fill_opts_here = {}
@@ -361,7 +368,8 @@ for i in np.arange(max([len(opts.eos_label),len(opts.fill_color),len(opts.eos_co
     if opts.fill_color and len(opts.fill_color) > i:
         fill_opts_here['color'] = opts.fill_color[i] 
         fill_opts_here['alpha'] = opts.fill_alpha
-        plot_opts_here['alpha'] = 0.0 #transparent line, hopefully
+        if opts.fill_alpha > 0.0:
+            plot_opts_here['alpha'] = 0.0 #transparent line, hopefully
     else:
         fill_opts_here['alpha'] = 0.0 #transparent
     if opts.eos_color and len(opts.eos_color) > i:
@@ -374,7 +382,7 @@ for i in np.arange(max([len(opts.eos_label),len(opts.fill_color),len(opts.eos_co
     plot_opts_list.append(plot_opts_here)
     fill_opts_list.append(fill_opts_here)
 
-print("Plot options collected:\n",plot_opts_list,"\n",fill_opts_list)
+print("Plot options collected:\nLines:",plot_opts_list,"\nFills:",fill_opts_list)
 
 
 #directly render all eos in provided range using their own axes
