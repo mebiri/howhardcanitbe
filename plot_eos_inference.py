@@ -84,7 +84,7 @@ else:
     #quant_bounds[i,:] = eval(opts.percentile_bounds[i]) #eval is ultra-sketchy but oh well
 
 
-def plot_credible():
+def plot_quantile_text():
     # Writing on the plot what Credible Intervals are being shown. - copied from Atul
     quantile_text = ''
     #for i in range(len(quant_bounds)):
@@ -242,13 +242,13 @@ def render_eos_list_quantiles_vs(eos_list, quantile_bounds=None, xvar='energy_de
     return None
 
 
+############################## LOAD / FIND DATA ###############################
 lines_to_use_list = []
 files_list_pd = []
 files_list_mr = []
 plot_opts_list = []
 fill_opts_list = []
-#if opts.eos_file:
-#    num_files = len(opts.eos_file)
+
 if opts.load_pyr_dat_dir:
     #make use of the available data to draw lines, not draw lines & hope the data exists
     for i in np.arange(len(opts.load_pyr_dat_dir)):
@@ -272,7 +272,6 @@ if opts.load_pyr_dat_dir:
                 print("ERROR: inconsistent number of PD & MR files!")
                 #not sure what to do here; continue?
                 num_files = min(len(all_pd_files),len(all_mr_files)) #PROBLEM: if either is 0
-                lines_to_use_list.append([0])
                 continue
         
         #draw random lines, as below
@@ -291,36 +290,69 @@ if opts.load_pyr_dat_dir:
         if opts.plot_mr:
             all_mr_files = np.array(all_mr_files)[lines_to_use]
             files_list_mr.append(all_mr_files)
-        lines_to_use_list.append(lines_to_use) #don't need this here, really         
-elif opts.eos_file:
+elif opts.eos_file or opts.load_pyr_obj_dir:
     if opts.plot_mr and (opts.load_pyr_obj_dir is None):
         print("ERROR: no supplied paths to MR data for requested MR plot. Will not generate!")
         opts.plot_mr = False
-    
-    for i in np.arange(len(opts.eos_file)):
-        #NEED to do this regardless, for consistency of random lines
-        #See how many lines of data there are:
-        if opts.num_eos == 0:
-            dat = np.genfromtxt(opts.eos_file[i])[:,0]
-        else:
-            dat = np.genfromtxt(opts.eos_file[i])[:opts.num_eos,0]
+    elif opts.plot_mr:
+        #get pyr h5 files that exist first, use those indices to draw from EOS file
+        for i in np.arange(len(opts.load_pyr_obj_dir)):
+            h5_files = glob.glob(opts.load_pyr_obj_dir[i]+"*.h5")
+            #reconstruct indices present:
+            valid_indx = np.zeros(len(h5_files))
+            for f in np.arange(len(h5_files)):
+                name_bits = h5_files[f].split("/")[-1].split("_") #/~/~/MARG-1-0_reprimand.tov.seq_0.h5 -> [MARG-1-0 , reprimand.tov.seq , 0.h5]
+                valid_indx[f] = int(name_bits[0].split("-")[-1]) + int(name_bits[2][0])
+            
+            print("Length of valid .h5 files collected:",len(valid_indx))
         
-        print("Initial data length for file:",len(dat))
+            if (int(opts.draw_eos) != 0) and (len(valid_indx) > int(opts.draw_eos)):
+                lines_to_use = np.random.choice(valid_indx,size=int(opts.draw_eos),replace=False)
+                print("Drawing",len(lines_to_use),"random lines from this file.")
+            else:
+                print("Using all collected lines from this file; total:",len(h5_files))
+                lines_to_use = valid_indx 
+            files_list_mr.append(np.array(h5_files)[lines_to_use]) #list of FILEPATHS
+            lines_to_use_list.append(lines_to_use) #for eos_files
         
-        if (int(opts.draw_eos) != 0) and (len(dat) > int(opts.draw_eos)):
-            lines_to_use = np.random.choice(len(dat),size=int(opts.draw_eos),replace=False)
-            print("Drawing",len(lines_to_use),"random lines from this file.")
-            dat = dat[lines_to_use]
-            if opts.verbose: print("Length of dat is now:",len(dat))
-        else:
-            print("Using all lines from this file; total:",len(dat))
-            lines_to_use = np.arange(len(dat)) #needed to get pyr files
-        lines_to_use_list.append(lines_to_use)
+            #need to assert len(eos_files) == len(pyr_obj_dirs)
         
-        if opts.verbose: print("First line of data:\n",dat[0])
+        if False: #opts.eos_file and (len(lines_to_use_list) > 0):
+            #just make sure lines_to_use doesn't exceed length of eos_file - shouldn't happen
+            for i in np.arange(len(opts.eos_file)):
+                dat = np.genfromtxt(opts.eos_file[i])[:,0]
+                if len(dat) < lines_to_use_list[i][-1]:
+                    print("ERROR: Cannot use this set of lines. Deal with it.")
+                    #delete lines_to_use_list[i]?
+    else: #basically: opts.plot_pd or opts.eos_file
+        #get EOS lines from grid file
+        for i in np.arange(len(opts.eos_file)):
+            #See how many lines of data there are:
+            if opts.num_eos == 0:
+                dat = np.genfromtxt(opts.eos_file[i])[:,0]
+            else:
+                dat = np.genfromtxt(opts.eos_file[i])[:opts.num_eos,0]
+            
+            print("Initial data length for file:",len(dat))
+            
+            if (int(opts.draw_eos) != 0) and (len(dat) > int(opts.draw_eos)):
+                lines_to_use = np.random.choice(len(dat),size=int(opts.draw_eos),replace=False)
+                print("Drawing",len(lines_to_use),"random lines from this file.")
+                dat = dat[lines_to_use]
+                if opts.verbose: print("Length of dat is now:",len(dat))
+            else:
+                print("Using all lines from this file; total:",len(dat))
+                lines_to_use = np.arange(len(dat)) #needed to get pyr files
+            lines_to_use_list.append(lines_to_use)
+            
+            if opts.verbose: print("First line of data:\n",dat[0])
+else:
+    print("ERROR: sorry, no supported inputs were given.")
+    sys.exit(0)
 
-for i in np.arange(max([len(opts.eos_label),len(opts.fill_color),len(opts.eos_color)])):
-    #gather plot stuff together:
+
+#gather plot stuff together
+for i in np.arange(max([len(opts.eos_label),len(opts.fill_color),len(opts.eos_color)])): 
     label_here = None
     plot_opts_here = {}
     fill_opts_here = {}
@@ -344,7 +376,9 @@ for i in np.arange(max([len(opts.eos_label),len(opts.fill_color),len(opts.eos_co
 
 print("Plot options collected:\n",plot_opts_list,"\n",fill_opts_list)
 
-if opts.render_eos_objects and opts.eos_file: #directly render all eos in provided range using their own axes
+
+#directly render all eos in provided range using their own axes
+if opts.render_eos_objects and opts.eos_file: 
     for i in np.arange(len(opts.eos_file)):
         my_eos_list = build_eos_sequence(opts.eos_file[i],lines_to_use_list[i])
         if my_eos_list is None:
@@ -432,121 +466,58 @@ if opts.plot_mr:
     import pyreprimand as pyr
     import lal
     from pathlib import Path
-    mass_range = None
-    if opts.load_pyr_obj_dir:
-        for i in np.arange(len(opts.eos_file)): 
-            #fetch pyr object files matching lines_to_use indices
-            #opts = "path/MARG-0-"
-            #WARNING: this doesn't work correctly if there are files missing!
-            chunk_files = glob.glob(opts.load_pyr_obj_dir[i]+"0_reprimand.tov.seq_*.h5")
-            nchunk = len(chunk_files)
-            eos_sequence = []
-            for j in lines_to_use_list[i]:
-                if nchunk == 1:
-                    loadname = opts.load_pyr_obj_dir[i]+str(j)+"_reprimand.tov.seq_0.h5"
-                else:
-                    loadname = opts.load_pyr_obj_dir[i]+str(j-(j%nchunk))+"_reprimand.tov.seq_"+str(j%nchunk)+".h5"
-                try:
-                    exists = Path(loadname)
+    mass_range = [0.7,2.5]
+    if (opts.load_pyr_dat_dir is None) and (opts.load_pyr_obj_dir is None):
+        print("ERROR: No MR data retrieval method specified!")
+        sys.exit(0)
+    for i in np.arange(len(files_list_mr)):
+        eos_sequence = []
+        for filename in files_list_mr[i]:
+            try:
+                if opts.load_pyr_obj_dir:
+                    exists = Path(filename) #extra safety to avoid hdf5 error barf
                     if exists.is_file():
-                        tov_seq_reprimand = pyr.load_star_branch(loadname, pyr.units.geom_solar(msun_si=lal.MSUN_SI))
+                        tov_seq_reprimand = pyr.load_star_branch(filename, pyr.units.geom_solar(msun_si=lal.MSUN_SI))
                         eos_sequence.append(tov_seq_reprimand)
                     else:
                         raise Exception()
-                except:
-                    print(" WARNING: could not find file: "+loadname)
-                    continue
-            
-            plot_opts = plot_opts_list[i]
-            fill_opts = fill_opts_list[i]
-            mass_range = [0.7,2.5]
+                else: # opts.load_pyr_dat_dir:
+                    dat_here = np.genfromtxt(filename)[:,:2] #mass, radius
+                    eos_sequence.append(dat_here) #will become very large, possibly ragged 3D array (list of 2D Nx2 arrays)
+            except Exception as e:
+                print("WARNING: could not open file",filename,":",e)
+                continue
+        
+        print("EOS list total:",len(eos_sequence))
+        
+        plot_opts = copy.deepcopy(plot_opts_list[i]) #plot_opts_list[i] #technically not needed, since last plot
+        fill_opts = copy.deepcopy(fill_opts_list[i]) #fill_opts_list[i]
+        
+        if opts.load_pyr_obj_dir:
             eosplot.render_reprimand_tovsequence_list_quantiles_vs(eos_sequence, quantile_bounds=[0.05,0.95], 
                                                                    xvar='radius', yvar='mass', range_mass='[0.7,2.5]', 
                                                                    percentile_method = 'use nan percentile', plot_kwargs=plot_opts, fill_kwargs=fill_opts)
-    elif opts.load_pyr_dat_dir:
-        for i in np.arange(len(files_list_mr)):
-            print(" WARNING: using pyr dat not fully implemented or tested. Use with caution!")
-            #load .txt files of pyr dat
-            #opts = "path/MARG-0-"
-            # go through file list & render (may need custom function - can make shared fig if so)
-            eos_list = []
-            for filename in files_list_mr[i]:
-                try:
-                    dat_here = np.genfromtxt(filename)[:,:2] #mass, radius
-                    #param_names = dat.dtype.names #separate out the names from the data
-                    #all_params = dat.view((float, len(param_names)))
-                except Exception as e:
-                    print("Error: could not open file",filename,":",e)
-                    continue
-                #switch m, r cols so x = r, y = m
-                #dat_switched = np.array([dat_here[:,1],dat_here[:,0]]).T
-                eos_list.append(dat_here) #will become very large, possibly ragged 3D array (list of 2D Nx2 arrays)
-            print("EOS list total:",len(eos_list))
-
+        elif opts.load_pyr_dat_dir:
+            print(" WARNING: using pyr dat not fully tested - interpolation does not work. Use with caution!")
             #adapted from EOSPlotUtilities.render_reprimand_tovsequence_list_quantiles_vs            
-            mass_range=[0.7,2.5]
             #range_mass = eval(range_mass)
             mg = np.linspace(mass_range[0], mass_range[1], 1000) #1D array
             #rc = np.zeros( (len(mg),len(eos_list))) #ND array, cf: outvals = np.zeros((npts,n_eos))
             
             #No idea if this will work:
-            rc = eval_pyr_dat_list(eos_list, xgrid=mg, use_monotonic=False) 
-            #mass_range = [min(upper_vals),max(upper_vals)] - need this somehow
+            rc = eval_pyr_dat_list(eos_sequence, xgrid=mg, use_monotonic=False) 
             #rc[:,i] = sequence_list[i].circ_radius_from_grav_mass(mg) #fill ND array in loop: R_i(M) for all M, for all i EOS
             # Remove EoSs which have unreasonably large radii from this analysis
             rc = np.delete(rc, np.where(rc > 50)[1], 1)
             
             ygrid_here = np.array(mg) #masses are 1D yvals
-            lower_vals = np.nanpercentile(rc,0.05*100,1) #get percentile of R
-            upper_vals = np.nanpercentile(rc,0.95*100,1)
-            
-            plot_opts = copy.deepcopy(plot_opts_list[i]) #technically not needed, since last plot
-            fill_opts = copy.deepcopy(fill_opts_list[i])            
+            lower_vals = np.nanpercentile(rc,quant_bounds[0]*100,1) #get percentile of R
+            upper_vals = np.nanpercentile(rc,quant_bounds[1]*100,1)
             
             plt.plot(lower_vals, ygrid_here, **plot_opts)
             plot_opts['label'] = ''
             plt.plot(upper_vals, ygrid_here, **plot_opts)
             plt.fill_betweenx(ygrid_here, lower_vals,upper_vals,**fill_opts)
-    else:
-        print("Big problems, buddy. Asked for an MR plot but didn't say how.")
-
-# =============================================================================
-#             eos_dat = []
-#             for j in lines_to_use:
-#                 #if opts.plot_pd: - can't use this
-#                 #    dat_here = np.loadtxt(opts.load_pyr_dat_dir+str(j)+"_pressure-density_"+str(j)+".txt")
-#                 #    #do something with this
-#                 #if opts.plot_mr:
-#                 dat_here = np.loadtxt(opts.load_pyr_dat_dir[i]+str(j)+"_mass-radius_"+str(j)+".txt")[:,:2]
-#                 #mass = 0, radius = 1
-#                 eos_dat.append(dat_here) #will become very large, possibly ragged 3D array (list of 2D Nx2 arrays)
-#             
-#             #BELOW IS BAD - copy reprimand code instead! No interpolation for MR!
-#             r_grid = np.linspace(8,20,1200) #0.01 resolution, same as pd plot
-#             npts = len(r_grid)
-#             #    print(npts,n_eos)
-#             # LARGE ALLOCATION potentially, so watch out -- usually I just need quantiles
-#             outvals  = np.zeros((npts,len(eos_dat)))
-# 
-#             for indx in np.arange(len(eos_dat)):
-#                 if True:
-#                     intp_func = PchipInterpolator(np.log(eos_dat[indx][:,1]),np.log(eos_dat[indx][:,0]))
-#                 else:
-#                     intp_func = UnivariateSpline(np.log(eos_dat[indx][:,1]),np.log(eos_dat[indx][:,0]))
-#                 ygrid = np.exp(intp_func(np.log(r_grid)))
-#                 outvals[:,indx] = ygrid
-#             
-#             xgrid_here = np.array(r_grid)
-#             upper_vals = np.percentile(outvals,quant_bounds[0]*100,1)
-#             lower_vals = np.percentile(outvals,quant_bounds[1]*100,1)
-#             
-#             
-#             plot_opts = plot_opts_list[i]
-#             plt.plot(xgrid_here, upper_vals, plot_opts)
-#             plot_opts['label'] = ''
-#             plt.plot(xgrid_here, lower_vals, plot_opts)
-#             plt.fill_between(xgrid_here, lower_vals,upper_vals,fill_opts_list[i])    
-# =============================================================================
     
     print("All mass-radius EOS rendered.")
     plt.xlabel("$R$ [km]")
