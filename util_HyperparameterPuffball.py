@@ -30,7 +30,7 @@ parser.add_argument("--use-rotated-spectral-coords",action='store_true',help="Ap
 parser.add_argument("--downselect-mass-range",action='store_true',help="Reject points where m2 > m1 for population models (slightly hacky; prefer diff coord sys)")
 parser.add_argument("--rotated-coord-buffer",default=0.0,type=float,help="Fractional buffer (e.g., 0.1; default 0) to extend rotated hypercube space (APPLIES AS % OF BOUND VALUE)")
 parser.add_argument("--reflect-parameters",action='store_true',help="Toggle parameter reflection, even if no --reflect-parameter provided (for rotated coord reflection)")
-parser.add_argument("--use-alternate-buffer",default=0.05,type=float,help="Buffer expands hypercube by x% of its full width (2x% total expansion), instead of by x% of bound value.")
+parser.add_argument("--use-alternate-buffer",action='store_true',help="Buffer expands hypercube by x% of its full width (2x% total expansion), instead of by x% of bound value (equivalent to (2x)% bound val buffer for [-r,+r] bounds.")
 
 #to unlink downselect & reflection:
 parser.add_argument("--parameter-range",action='append',type=str)
@@ -139,16 +139,17 @@ if len(coord_names) >1:
     # Compute errors
     rv = scipy.stats.multivariate_normal(mean=np.zeros(len(coord_names)), cov=cov,allow_singular=True)  # they are just complaining about dynamic range of parameters, usually
     delta_X = rv.rvs(size=len(X))
-    X_out = X#+delta_X
+    X_out = X+delta_X
     
     # Reflection
     for indx in indx_reflect:
         param = coord_names[indx]
-        print("   Reflecting into range : {} [{}, {}]".format(param,reflect_dict[param][0],reflect_dict[param][1]))
+        print("  Reflecting into range : {} [{}, {}]".format(param,reflect_dict[param][0],reflect_dict[param][1]))
         # put in range [0,2 L]
         tmp = reflect_dict[param][0] + np.mod(X_out[:,indx] - reflect_dict[param][0], 2*(reflect_dict[param][1] - reflect_dict[param][0]) )
         # final reflection
         tmp = np.where( tmp > reflect_dict[param][1], 2*reflect_dict[param][1] - tmp, tmp)
+        print("   Increment reflect : {} {} ".format(param,np.sum(tmp != X_out[:,indx])))
         X_out[:,indx] = tmp
         # DELETE parameter from downselet_dict : no longer needed
         del downselect_dict[param]
@@ -198,21 +199,22 @@ if opts.use_rotated_spectral_coords:
     
     for indx, param in enumerate(rot_coords.keys()):
         # apply hypercube buffer
-        if opts.use_alternate_buffer: #new_bound = bound +/- buffer*(width of cube in param)
+        if opts.use_alternate_buffer: #new_bound = bound +/- buffer*(width of param range) -> SYMMETRIC buffer
             ubound = rot_coords[param][1] + opts.rotated_coord_buffer*abs(rot_coords[param][1]-rot_coords[param][0])
             lbound = rot_coords[param][0] - opts.rotated_coord_buffer*abs(rot_coords[param][1]-rot_coords[param][0])
-        else:
+        else: #new_bound = bound +/- buffer*|bound| -> asymmetric buffer
             ubound = rot_coords[param][1] + opts.rotated_coord_buffer*abs(rot_coords[param][1])
             lbound = rot_coords[param][0] - opts.rotated_coord_buffer*abs(rot_coords[param][0])
         if opts.reflect_parameters:
             # Reflection
-            print("   Reflecting into range : {} [{}, {}]".format(param,lbound,ubound))
+            print("  Reflecting into range : {} [{}, {}]".format(param,lbound,ubound))
             # put in range [0,2 L]
             #tmp = rot_coords[param][0] + np.mod(r_prime[:,indx] - rot_coords[param][0], 2*(rot_coords[param][1] - rot_coords[param][0]) )
             tmp = lbound + np.mod(r_prime[:,indx] - lbound, 2*(ubound - lbound) )
             # final reflection
             #tmp = np.where( tmp > rot_coords[param][1], 2*rot_coords[param][1] - tmp, tmp)
             tmp = np.where( tmp > ubound, 2*ubound - tmp, tmp)
+            print("   Increment reflect : {} {} ".format(param,np.sum(tmp != r_prime[:,indx])))
             r_prime[:,indx] = tmp 
         else:
             # Downselection
