@@ -76,22 +76,24 @@ parser.add_argument("--supplementary-likelihood-factor-function", default=None,t
 opts = parser.parse_args()
 
 #can be called externally, maybe (Alt_marg.py pref.) - need to setup missing opts
-def save_results(out_grid, header, save_all=True):
+#WARNING: DO NOT USE WITH CIP ITSELF - CIP CAN SAVE ITS OWN FILES! (use CIP_but_better for chunk saving CIP results)
+def save_results(out_grid, header, fname_output_samples, fname_output_integral, save_all=True, chunk_save=False, ignore_inf=True, n_eff=3e3):
     #NEED TO MATCH ALL CIP OUTPUT FILES FOR HYPERPIPE
-    if opts.chunk_save and len(out_grid) > 1:
-        # remove invalid lines
+    if chunk_save and len(out_grid[0]) > 1:
+        #Remove invalid lines:
         indx_ok = np.ones(len(out_grid),dtype=bool)
         indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isnan(out_grid[:,0]))) #check nans (shouldn't happen)
-        indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isinf(out_grid[:,0]))) #check +/-inf (can happen)
-        print('   Ignoring lines with lnL = -inf : {} '.format(len(out_grid)-np.sum(indx_ok)))
+        if ignore_inf:
+            indx_ok = np.logical_and(indx_ok,  np.logical_not(np.isinf(out_grid[:,0]))) #check +/-inf (can happen)
+            print('   Ignoring lines with lnL = -inf : {} '.format(len(out_grid)-np.sum(indx_ok)))
         out_grid = out_grid[indx_ok]
         
         var = out_grid[:,1]/out_grid[:,0] #mimics sqrt(line[1]**2)/res behavior for single line
         out_grid[:,1] = var
         
         #File (2/7): MARG-0-0+annotation.dat
-        np.savetxt(opts.fname_output_integral+"+annotation.dat",out_grid,header=header[:-1]) #skip newline char in header
-        print("Chunk file saved.")
+        np.savetxt(fname_output_integral+"+annotation.dat",out_grid,header=header[:-1]) #skip newline char in header
+        print("Chunk file ({} lines) saved.".format(len(out_grid)))
         return
     
     #Note: CIP filenames not formatted to support multiple lines, at present
@@ -108,18 +110,18 @@ def save_results(out_grid, header, save_all=True):
         else:
             var_out = np.sqrt(line[1]**2)/res
         ln_integrand_value = res
-        neff = opts.n_eff
+        neff = n_eff
         
         # Save result -- needed for odds ratios, etc.
         #   Warning: integral_result.dat uses *original* prior, before any reweighting
         if save_all:
             #File (1/7): MARG-0-0.dat
-            np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
+            np.savetxt(fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
         
         eos_extra = []
         params_here = line[2:]#np.loadtxt(fname)[opts.using_eos_index][2:]
         annotation_header = header # this will/must be lnL sigma_lnL and then parameter names, which we want to preserve
-        with open(opts.fname_output_integral+"+annotation.dat", 'w') as file_out:
+        with open(fname_output_integral+"+annotation.dat", 'w') as file_out:
             file_out.write("# " + annotation_header + "\n")
             file_out.write(" {} {} ".format(ln_integrand_value, var_out) + ' '.join(map(str,params_here)))
             #File (2/7): MARG-0-0+annotation.dat
@@ -128,7 +130,7 @@ def save_results(out_grid, header, save_all=True):
         
         if save_all:
             n_ESS = -1
-            np.savetxt(opts.fname_output_integral+"+annotation_ESS.dat",[[ln_integrand_value, var_out, neff, n_ESS]],header=" lnL sigmaL neff n_ESS ")
+            np.savetxt(fname_output_integral+"+annotation_ESS.dat",[[ln_integrand_value, var_out, neff, n_ESS]],header=" lnL sigmaL neff n_ESS ")
             #File (3/7): MARG-0-0+annotation_ESS.dat
             
             lnLmax = ln_integrand_value
@@ -136,9 +138,9 @@ def save_results(out_grid, header, save_all=True):
             
             log_res_reweighted = lnLmax + np.log(np.mean(weights))
             sigma_reweighted= np.std(weights,dtype=np.float64)/np.mean(weights)
-            np.savetxt(opts.fname_output_integral+"_withpriorchange.dat", [log_res_reweighted])  # should agree with the usual result, if no prior changes. Erm... about that...
+            np.savetxt(fname_output_integral+"_withpriorchange.dat", [log_res_reweighted])  # should agree with the usual result, if no prior changes. Erm... about that...
             #File (4/7): MARG-0-0_withpriorchange.dat
-            with open(opts.fname_output_integral+"_withpriorchange+annotation.dat", 'w') as file_out:
+            with open(fname_output_integral+"_withpriorchange+annotation.dat", 'w') as file_out:
                 str_out = list(map(str,[log_res_reweighted, sigma_reweighted, neff]))
                 file_out.write("# " + annotation_header + "\n")
                 file_out.write(' '.join( str_out + eos_extra + ["\n"]))
@@ -148,7 +150,7 @@ def save_results(out_grid, header, save_all=True):
             #File (6/7): MARG-0-0.xml.gz - hopefully not needed...
             lnL_list = [line[0]] #still just for the 1 line; sampler results in CIP
             lnL_list = np.array(lnL_list,dtype=internal_dtype)#lnL_list created during downselecting in CIP
-            np.savetxt(opts.fname_output_samples+"_lnL.dat", lnL_list)
+            np.savetxt(fname_output_samples+"_lnL.dat", lnL_list)
             #File (7/7): MARG-0-0_lnL.dat - usually contains lnL of all samples    
         
         print("All files saved for this line.")
@@ -236,41 +238,41 @@ def save_results(out_grid, header, save_all=True):
 # =============================================================================
 
 
-#------------------------------------------------------------------------------
-if opts.using_eos is None:
-    print("--Warning: Test Mode: using preset files--")
-    opts.using_eos="file:test_pop_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
-    opts.using_eos_index = 0
-    opts.failstate = 3
-    opts.fill_lnL_val = -1000
-
-#Access EOS file data:
-fname = opts.using_eos.replace('file:', '')
-dat_all = np.genfromtxt(fname,names=True)
-try:
-    check_dat = dat_all[opts.using_eos_index]#np.genfromtxt(fname,names=True)[opts.using_eos_index] #test for index being out of range
-except Exception as e:
-    print(" Fail: EOS index out of range:\n   ",e)
-    sys.exit(0)
-pop_dat = dat_all[opts.using_eos_index:opts.using_eos_index+opts.n_events_to_analyze] #should be 1 line if n_events=1
-param_names = list(pop_dat.dtype.names)
-pop_as_array = pop_dat.view((float, len(param_names)))#[:,2:] #skip first 2 cols
-print(pop_as_array[0])
-print(" retrieved dat size: (",len(pop_as_array),len(pop_as_array[0]),")")
-
-dat_out = np.zeros((len(pop_as_array),len(pop_as_array[0])))
-savetype=opts.save_all
-if opts.failstate == 3:
-    #EOS creation failed in CIP
-    dat_out[:,2:] = pop_as_array[:,2:]
-    dat_out[:,0] = opts.fill_lnL_val #fiducial value
-    dat_out[:,1] = 0.001 #fiducial value
-    savetype=False
-else:
-    dat_out[:,:] = pop_as_array[:,:]
-
-#print(dat_out)
-lineheader = ' '.join(map(str,param_names))+"\n" #to match CIP extracted header
-save_results(dat_out,lineheader,save_all=savetype)
+if __name__ == '__main__':
+    if opts.using_eos is None:
+        print("--Warning: Test Mode: using preset files--")
+        opts.using_eos="file:test_pop_eos_Parametrized-EoS_maxmass_EoS_samples.txt"
+        opts.using_eos_index = 0
+        opts.failstate = 3
+        opts.fill_lnL_val = -1000
+    
+    #Access EOS file data:
+    fname = opts.using_eos.replace('file:', '')
+    dat_all = np.genfromtxt(fname,names=True)
+    try:
+        check_dat = dat_all[opts.using_eos_index]#np.genfromtxt(fname,names=True)[opts.using_eos_index] #test for index being out of range
+    except Exception as e:
+        print(" Fail: EOS index out of range:\n   ",e)
+        sys.exit(0)
+    pop_dat = dat_all[opts.using_eos_index:opts.using_eos_index+opts.n_events_to_analyze] #should be 1 line if n_events=1
+    param_names = list(pop_dat.dtype.names)
+    pop_as_array = pop_dat.view((float, len(param_names)))#[:,2:] #skip first 2 cols
+    print(pop_as_array[0])
+    print(" retrieved dat size: (",len(pop_as_array),len(pop_as_array[0]),")")
+    
+    dat_out = np.zeros((len(pop_as_array),len(pop_as_array[0])))
+    savetype=opts.save_all
+    if opts.failstate == 3:
+        #EOS creation failed in CIP
+        dat_out[:,2:] = pop_as_array[:,2:]
+        dat_out[:,0] = opts.fill_lnL_val #fiducial value
+        dat_out[:,1] = 0.001 #fiducial value
+        savetype=False
+    else:
+        dat_out[:,:] = pop_as_array[:,:]
+    
+    #print(dat_out)
+    lineheader = ' '.join(map(str,param_names))+"\n" #to match CIP extracted header
+    save_results(dat_out,lineheader,save_all=savetype)
 
 
