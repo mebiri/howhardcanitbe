@@ -7,6 +7,7 @@ custom corner plot, with hypercube shown in back & data superimposed in front.
 import numpy as np
 import argparse
 import matplotlib.pyplot as plt
+from matplotlib import colormaps
 
 parser = argparse.ArgumentParser()
 
@@ -15,6 +16,7 @@ parser.add_argument('--buffer',type=float,default=0.1,help="buffer size (default
 parser.add_argument('--npts-cube',type=int,default=2000,help="number of points to draw to fill hypercube")
 parser.add_argument('--lnL-cut',type=float,default=None,help="maybe curoff lnLs below certain val, to reduce points plotted")
 parser.add_argument('--use-alt-buffer',action='store_true',help="use symmetric buffer implementation (total buffer = 2x opts.buffer)")
+parser.add_argument('--use-all-composite-but-grayscale',action='store_true',help="plot all points in greyscale, color points on top")
 
 opts = parser.parse_args()
 
@@ -44,12 +46,16 @@ def get_puff_bounds(use_alt_buffer=False, buffer=0.1,ret=False):
         return new_bounds
 
 
-def build_plot(gammas,g_dat,lnL_list):    
+def build_plot(gammas,g_dat,lnL_list,colormap,grey_dat=None):    
     fig1 = plt.figure(figsize=(8,7.5),dpi=250) 
+    grey = False
+    if grey_dat is not None:
+        grey = True
     
     ax1 = fig1.add_subplot(331)
-    ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color="tab:blue")
-    ax1.scatter(g_dat[:,0],g_dat[:,1],c=lnL_list,marker=".")
+    ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color="tab:blue",s=1)
+    if grey: ax1.scatter(grey_dat[:,0],grey_dat[:,1],marker=".",s=1,color='0.5')
+    ax1.scatter(g_dat[:,0],g_dat[:,1],c=lnL_list,marker=".",s=1,cmap=colormap)
     #ax.set_xlim(left=1.0,right=2.0)
     #ax.set_ylim(bottom=1.0,top=2.0)
     #ax1.set_xlabel("$\gamma_0$", size="11")
@@ -58,42 +64,49 @@ def build_plot(gammas,g_dat,lnL_list):
     #ax1.grid(True)
     
     ax2 = fig1.add_subplot(335)
-    ax2.scatter(gammas[:,1],gammas[:,2],marker=".",color="tab:blue")
-    ax2.scatter(g_dat[:,1],g_dat[:,2],c=lnL_list,marker=".")
+    ax2.scatter(gammas[:,1],gammas[:,2],marker=".",color="tab:blue",s=1)
+    if grey: ax2.scatter(grey_dat[:,1],grey_dat[:,2],marker=".",s=1,color='0.5')
+    ax2.scatter(g_dat[:,1],g_dat[:,2],c=lnL_list,marker=".",s=1)
     #ax2.set_xlabel("$\gamma_1$", size="11")
     #ax2.set_ylabel("$\gamma_2$", size="11")
     ax2.tick_params(axis='both', which='major', labelsize=6) 
     
     ax3 = fig1.add_subplot(339)
-    ax3.scatter(gammas[:,2],gammas[:,3],marker=".",color="tab:blue")
-    ax3.scatter(g_dat[:,2],g_dat[:,3],c=lnL_list,marker=".")
+    ax3.scatter(gammas[:,2],gammas[:,3],marker=".",color="tab:blue",s=1)
+    if grey: ax3.scatter(grey_dat[:,2],grey_dat[:,3],marker=".",s=1,color='0.5')
+    ax3.scatter(g_dat[:,2],g_dat[:,3],c=lnL_list,marker=".",s=1)
     ax3.set_xlabel("$\gamma_2$", size="11")
     #ax3.set_ylabel("$\gamma_3$", size="11")
     ax3.tick_params(axis='both', which='major', labelsize=6) 
     
     ax4 = fig1.add_subplot(334)
-    ax4.scatter(gammas[:,0],gammas[:,2],marker=".",color="tab:blue")
-    ax4.scatter(g_dat[:,0],g_dat[:,2],c=lnL_list,marker=".")
+    ax4.scatter(gammas[:,0],gammas[:,2],marker=".",color="tab:blue",s=1)
+    if grey: ax4.scatter(grey_dat[:,0],grey_dat[:,2],marker=".",s=1,color='0.5')
+    ax4.scatter(g_dat[:,0],g_dat[:,2],c=lnL_list,marker=".",s=1)
     #ax4.set_xlabel("$\gamma_0$", size="11")
     ax4.set_ylabel("$\gamma_2$", size="11")
     ax4.tick_params(axis='both', which='major', labelsize=6) 
     
     ax5 = fig1.add_subplot(337)
-    ax5.scatter(gammas[:,0],gammas[:,3],marker=".",color="tab:blue")
-    ax5.scatter(g_dat[:,0],g_dat[:,3],c=lnL_list,marker=".")
+    ax5.scatter(gammas[:,0],gammas[:,3],marker=".",color="tab:blue",s=1)
+    if grey: ax5.scatter(grey_dat[:,0],grey_dat[:,3],marker=".",s=1,color='0.5')
+    ax5.scatter(g_dat[:,0],g_dat[:,3],c=lnL_list,marker=".",s=1)
     ax5.set_xlabel("$\gamma_0$", size="11")
     ax5.set_ylabel("$\gamma_3$", size="11")
     ax5.tick_params(axis='both', which='major', labelsize=6) 
     
     ax6 = fig1.add_subplot(338)
-    ax6.scatter(gammas[:,1],gammas[:,3],marker=".",color="tab:blue")
-    ax6.scatter(g_dat[:,1],g_dat[:,3],c=lnL_list,marker=".")
-    ax6.set_xlabel("$\gamma_0$", size="11")
+    ax6.scatter(gammas[:,1],gammas[:,3],marker=".",color="tab:blue",s=1)
+    if grey: ax6.scatter(grey_dat[:,1],grey_dat[:,3],marker=".",s=1,color='0.5')
+    ax6.scatter(g_dat[:,1],g_dat[:,3],c=lnL_list,marker=".",s=1)
+    ax6.set_xlabel("$\gamma_1$", size="11")
     #ax6.set_ylabel("$\gamma_2$", size="11")
     ax6.tick_params(axis='both', which='major', labelsize=6) 
     
     fig1.tight_layout()
     save_name = "custom_corner_"+str(opts.buffer).replace(".","p")+"_"+opts.using_eos.split("/")[-1].split(".")[0]
+    if opts.lnL_cut:
+        save_name+="lnL_cut_"+str(opts.lnL_cut)
     fig1.savefig(save_name+".png",dpi=250)
     plt.show()
     print("EOS mass-radius figure saved as "+save_name+".png")
@@ -130,13 +143,30 @@ if opts.lnL_cut:
     print(" Length of cut data:",np.sum(indx_ok))
     all_dat = all_dat[indx_ok]
 
-lnLs = all_dat[:,0]
+lnL = all_dat[:,0] 
 g_indx = [param_names.index(k) for k in coord_names]
-all_dat = all_dat[:,g_indx]
+g_dat = all_dat[:,g_indx]
+g_dat_orig = all_dat[:,g_indx]
+
+#stolen from plot_posterior_corner.py:
+cm = colormaps['rainbow']
+indx_sorted = lnL.argsort()
+y_span = lnL.max() - lnL.min()
+print(" Composite file : lnL span ", y_span)
+y_min = lnL.min()
+cm2 = lambda x: cm( (x - y_min)/y_span)
+my_cmap_values = cm((lnL-y_min)/y_span)
+ 
+# reverse order ... make sure largest plotted last
+g_dat = g_dat[indx_sorted]   # Sort by lnL
+my_cmap_values = my_cmap_values[indx_sorted]
 
 print("size of selected data:",len(all_dat),all_dat.shape)
-print("length of likelihood data:",len(lnLs))
+print("length of likelihood data:",len(lnL))
 
-build_plot(r_gammas, all_dat, lnLs)
+if opts.use_all_composite_but_grayscale:
+    build_plot(r_gammas, g_dat, lnL, my_cmap_values, grey_dat=g_dat_orig)
+else:
+    build_plot(r_gammas, g_dat, lnL, my_cmap_values)
 
 
