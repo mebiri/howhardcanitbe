@@ -1,5 +1,7 @@
 #! /usr/bin/env python
 """
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
 custom corner plot, with hypercube shown in back & data superimposed in front.
 """
 import numpy as np
@@ -46,7 +48,7 @@ def build_plot(gammas,g_dat,lnL_list):
     fig1 = plt.figure(figsize=(8,7.5),dpi=250) 
     
     ax1 = fig1.add_subplot(331)
-    ax1.scatter(gammas[:,0],gammas[:,1],marker=".")
+    ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color="tab:blue")
     ax1.scatter(g_dat[:,0],g_dat[:,1],c=lnL_list,marker=".")
     #ax.set_xlim(left=1.0,right=2.0)
     #ax.set_ylim(bottom=1.0,top=2.0)
@@ -56,42 +58,42 @@ def build_plot(gammas,g_dat,lnL_list):
     #ax1.grid(True)
     
     ax2 = fig1.add_subplot(335)
-    ax2.scatter(gammas[:,1],gammas[:,2],marker=".")
+    ax2.scatter(gammas[:,1],gammas[:,2],marker=".",color="tab:blue")
     ax2.scatter(g_dat[:,1],g_dat[:,2],c=lnL_list,marker=".")
     #ax2.set_xlabel("$\gamma_1$", size="11")
     #ax2.set_ylabel("$\gamma_2$", size="11")
     ax2.tick_params(axis='both', which='major', labelsize=6) 
     
     ax3 = fig1.add_subplot(339)
-    ax3.scatter(gammas[:,2],gammas[:,3],marker=".")
+    ax3.scatter(gammas[:,2],gammas[:,3],marker=".",color="tab:blue")
     ax3.scatter(g_dat[:,2],g_dat[:,3],c=lnL_list,marker=".")
     ax3.set_xlabel("$\gamma_2$", size="11")
     #ax3.set_ylabel("$\gamma_3$", size="11")
     ax3.tick_params(axis='both', which='major', labelsize=6) 
     
     ax4 = fig1.add_subplot(334)
-    ax4.scatter(gammas[:,0],gammas[:,2],marker=".")
+    ax4.scatter(gammas[:,0],gammas[:,2],marker=".",color="tab:blue")
     ax4.scatter(g_dat[:,0],g_dat[:,2],c=lnL_list,marker=".")
     #ax4.set_xlabel("$\gamma_0$", size="11")
     ax4.set_ylabel("$\gamma_2$", size="11")
     ax4.tick_params(axis='both', which='major', labelsize=6) 
     
     ax5 = fig1.add_subplot(337)
-    ax5.scatter(gammas[:,0],gammas[:,3],marker=".")
+    ax5.scatter(gammas[:,0],gammas[:,3],marker=".",color="tab:blue")
     ax5.scatter(g_dat[:,0],g_dat[:,3],c=lnL_list,marker=".")
     ax5.set_xlabel("$\gamma_0$", size="11")
     ax5.set_ylabel("$\gamma_3$", size="11")
     ax5.tick_params(axis='both', which='major', labelsize=6) 
     
     ax6 = fig1.add_subplot(338)
-    ax6.scatter(gammas[:,1],gammas[:,3],marker=".")
+    ax6.scatter(gammas[:,1],gammas[:,3],marker=".",color="tab:blue")
     ax6.scatter(g_dat[:,1],g_dat[:,3],c=lnL_list,marker=".")
     ax6.set_xlabel("$\gamma_0$", size="11")
     #ax6.set_ylabel("$\gamma_2$", size="11")
     ax6.tick_params(axis='both', which='major', labelsize=6) 
     
     fig1.tight_layout()
-    save_name = "custom_corner_"+str(opts.buffer)+"_"+opts.using_eos.split("/")[-1].split(".")[0]
+    save_name = "custom_corner_"+str(opts.buffer).replace(".","p")+"_"+opts.using_eos.split("/")[-1].split(".")[0]
     fig1.savefig(save_name+".png",dpi=250)
     plt.show()
     print("EOS mass-radius figure saved as "+save_name+".png")
