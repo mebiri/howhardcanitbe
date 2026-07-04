@@ -7,7 +7,7 @@ custom corner plot, with hypercube shown in back & data superimposed in front.
 import numpy as np
 import argparse
 import matplotlib.pyplot as plt
-from matplotlib import colormaps
+#from matplotlib import colormaps
 
 parser = argparse.ArgumentParser()
 
@@ -22,6 +22,7 @@ opts = parser.parse_args()
 
 #opts.using_eos = "consolidated_0_0.txt"
 #opts.lnL_cut= 15
+#opts.use_all_composite_but_grayscale = True
 
 def get_puff_bounds(use_alt_buffer=False, buffer=0.1,ret=False):
     rot_coords = {}
@@ -46,16 +47,17 @@ def get_puff_bounds(use_alt_buffer=False, buffer=0.1,ret=False):
         return new_bounds
 
 
-def build_plot(gammas,g_dat,lnL_list,colormap,grey_dat=None):    
+def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):    
     fig1 = plt.figure(figsize=(8,7.5),dpi=250) 
     grey = False
     if grey_dat is not None:
         grey = True
+    cm = 'rainbow_r'
     
     ax1 = fig1.add_subplot(331)
-    ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color="tab:blue",s=1)
+    ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color="tab:blue")
     if grey: ax1.scatter(grey_dat[:,0],grey_dat[:,1],marker=".",s=1,color='0.5')
-    ax1.scatter(g_dat[:,0],g_dat[:,1],c=lnL_list,marker=".",s=1,cmap=colormap)
+    ax1.scatter(g_dat[:,0],g_dat[:,1],c=lnL_list,marker=".",s=1,cmap=cm)
     #ax.set_xlim(left=1.0,right=2.0)
     #ax.set_ylim(bottom=1.0,top=2.0)
     #ax1.set_xlabel("$\gamma_0$", size="11")
@@ -64,41 +66,41 @@ def build_plot(gammas,g_dat,lnL_list,colormap,grey_dat=None):
     #ax1.grid(True)
     
     ax2 = fig1.add_subplot(335)
-    ax2.scatter(gammas[:,1],gammas[:,2],marker=".",color="tab:blue",s=1)
+    ax2.scatter(gammas[:,1],gammas[:,2],marker=".",color="tab:blue")
     if grey: ax2.scatter(grey_dat[:,1],grey_dat[:,2],marker=".",s=1,color='0.5')
-    ax2.scatter(g_dat[:,1],g_dat[:,2],c=lnL_list,marker=".",s=1)
+    ax2.scatter(g_dat[:,1],g_dat[:,2],c=lnL_list,marker=".",s=1,cmap=cm)
     #ax2.set_xlabel("$\gamma_1$", size="11")
     #ax2.set_ylabel("$\gamma_2$", size="11")
     ax2.tick_params(axis='both', which='major', labelsize=6) 
     
     ax3 = fig1.add_subplot(339)
-    ax3.scatter(gammas[:,2],gammas[:,3],marker=".",color="tab:blue",s=1)
+    ax3.scatter(gammas[:,2],gammas[:,3],marker=".",color="tab:blue")
     if grey: ax3.scatter(grey_dat[:,2],grey_dat[:,3],marker=".",s=1,color='0.5')
-    ax3.scatter(g_dat[:,2],g_dat[:,3],c=lnL_list,marker=".",s=1)
+    ax3.scatter(g_dat[:,2],g_dat[:,3],c=lnL_list,marker=".",s=1,cmap=cm)
     ax3.set_xlabel("$\gamma_2$", size="11")
     #ax3.set_ylabel("$\gamma_3$", size="11")
     ax3.tick_params(axis='both', which='major', labelsize=6) 
     
     ax4 = fig1.add_subplot(334)
-    ax4.scatter(gammas[:,0],gammas[:,2],marker=".",color="tab:blue",s=1)
+    ax4.scatter(gammas[:,0],gammas[:,2],marker=".",color="tab:blue")
     if grey: ax4.scatter(grey_dat[:,0],grey_dat[:,2],marker=".",s=1,color='0.5')
-    ax4.scatter(g_dat[:,0],g_dat[:,2],c=lnL_list,marker=".",s=1)
+    ax4.scatter(g_dat[:,0],g_dat[:,2],c=lnL_list,marker=".",s=1,cmap=cm)
     #ax4.set_xlabel("$\gamma_0$", size="11")
     ax4.set_ylabel("$\gamma_2$", size="11")
     ax4.tick_params(axis='both', which='major', labelsize=6) 
     
     ax5 = fig1.add_subplot(337)
-    ax5.scatter(gammas[:,0],gammas[:,3],marker=".",color="tab:blue",s=1)
+    ax5.scatter(gammas[:,0],gammas[:,3],marker=".",color="tab:blue")
     if grey: ax5.scatter(grey_dat[:,0],grey_dat[:,3],marker=".",s=1,color='0.5')
-    ax5.scatter(g_dat[:,0],g_dat[:,3],c=lnL_list,marker=".",s=1)
+    ax5.scatter(g_dat[:,0],g_dat[:,3],c=lnL_list,marker=".",s=1,cmap=cm)
     ax5.set_xlabel("$\gamma_0$", size="11")
     ax5.set_ylabel("$\gamma_3$", size="11")
     ax5.tick_params(axis='both', which='major', labelsize=6) 
     
     ax6 = fig1.add_subplot(338)
-    ax6.scatter(gammas[:,1],gammas[:,3],marker=".",color="tab:blue",s=1)
+    ax6.scatter(gammas[:,1],gammas[:,3],marker=".",color="tab:blue")
     if grey: ax6.scatter(grey_dat[:,1],grey_dat[:,3],marker=".",s=1,color='0.5')
-    ax6.scatter(g_dat[:,1],g_dat[:,3],c=lnL_list,marker=".",s=1)
+    ax6.scatter(g_dat[:,1],g_dat[:,3],c=lnL_list,marker=".",s=1,cmap=cm)
     ax6.set_xlabel("$\gamma_1$", size="11")
     #ax6.set_ylabel("$\gamma_2$", size="11")
     ax6.tick_params(axis='both', which='major', labelsize=6) 
@@ -106,7 +108,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap,grey_dat=None):
     fig1.tight_layout()
     save_name = "custom_corner_"+str(opts.buffer).replace(".","p")+"_"+opts.using_eos.split("/")[-1].split(".")[0]
     if opts.lnL_cut:
-        save_name+="lnL_cut_"+str(opts.lnL_cut)
+        save_name+="_lnL_cut_"+str(opts.lnL_cut)
     fig1.savefig(save_name+".png",dpi=250)
     plt.show()
     print("EOS mass-radius figure saved as "+save_name+".png")
@@ -135,6 +137,8 @@ param_names = list(dat.dtype.names)
 all_dat = dat.view((float, len(param_names)))
 print("size of imported data:",len(all_dat),all_dat.shape)
 
+g_indx = [param_names.index(k) for k in coord_names]
+g_dat_orig = all_dat[:,g_indx]
 maxlnL = max(all_dat[:,0])
 print("max lnL:",maxlnL)
 if opts.lnL_cut:
@@ -144,29 +148,27 @@ if opts.lnL_cut:
     all_dat = all_dat[indx_ok]
 
 lnL = all_dat[:,0] 
-g_indx = [param_names.index(k) for k in coord_names]
 g_dat = all_dat[:,g_indx]
-g_dat_orig = all_dat[:,g_indx]
 
 #stolen from plot_posterior_corner.py:
-cm = colormaps['rainbow']
+#cm = colormaps['rainbow_r']
 indx_sorted = lnL.argsort()
 y_span = lnL.max() - lnL.min()
 print(" Composite file : lnL span ", y_span)
-y_min = lnL.min()
-cm2 = lambda x: cm( (x - y_min)/y_span)
-my_cmap_values = cm((lnL-y_min)/y_span)
+#y_min = lnL.min()
+#cm2 = lambda x: cm( (x - y_min)/y_span)
+#my_cmap_values = cm((lnL-y_min)/y_span)
  
 # reverse order ... make sure largest plotted last
 g_dat = g_dat[indx_sorted]   # Sort by lnL
-my_cmap_values = my_cmap_values[indx_sorted]
+#my_cmap_values = my_cmap_values[indx_sorted]
 
 print("size of selected data:",len(all_dat),all_dat.shape)
 print("length of likelihood data:",len(lnL))
 
 if opts.use_all_composite_but_grayscale:
-    build_plot(r_gammas, g_dat, lnL, my_cmap_values, grey_dat=g_dat_orig)
+    build_plot(r_gammas, g_dat, lnL, grey_dat=g_dat_orig)
 else:
-    build_plot(r_gammas, g_dat, lnL, my_cmap_values)
+    build_plot(r_gammas, g_dat, lnL)
 
 
