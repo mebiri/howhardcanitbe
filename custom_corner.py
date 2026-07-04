@@ -91,7 +91,10 @@ def build_plot(gammas,g_dat,lnL_list):
     ax6.tick_params(axis='both', which='major', labelsize=6) 
     
     fig1.tight_layout()
-    plt.show(block=False)
+    save_name = "custom_corner_"+str(opts.buffer)+"_"+opts.using_eos.split("/")[-1].split(".")[0]
+    fig1.savefig(save_name+".png",dpi=250)
+    plt.show()
+    print("EOS mass-radius figure saved as "+save_name+".png")
 
 
 npts = opts.npts_cube
