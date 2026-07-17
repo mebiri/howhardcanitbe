@@ -58,8 +58,8 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     gmin = []
     gmax = []
     for i in np.arange(4):
-        gmin.append(min(gammas[:,i])-0.1)
-        gmax.append(max(gammas[:,i])+0.1)
+        gmin.append(min(gammas[:,i])-(0.1/(i+1)))
+        gmax.append(max(gammas[:,i])+(0.1/(i+1)))
     
     ax1 = fig1.add_subplot(331)
     ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color="tab:blue")
@@ -69,6 +69,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
         ax1.set_xlim(left=gmin[0],right=gmax[0])
         ax1.set_ylim(bottom=gmin[1],top=gmax[1])
     #ax1.set_xlabel("$\gamma_0$", size="11")
+    ax1.set_xticks([])
     ax1.set_ylabel("$\gamma_1$", size="11")
     ax1.tick_params(axis='both', which='major', labelsize=6) 
     
@@ -81,6 +82,8 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
         ax2.set_ylim(bottom=gmin[2],top=gmax[2])
     #ax2.set_xlabel("$\gamma_1$", size="11")
     #ax2.set_ylabel("$\gamma_2$", size="11")
+    ax2.set_xticks([])
+    ax2.set_yticks([])
     ax2.tick_params(axis='both', which='major', labelsize=6) 
     
     ax3 = fig1.add_subplot(339)
@@ -92,6 +95,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
         ax3.set_ylim(bottom=gmin[3],top=gmax[3])
     ax3.set_xlabel("$\gamma_2$", size="11")
     #ax3.set_ylabel("$\gamma_3$", size="11")
+    ax3.set_yticks([])
     ax3.tick_params(axis='both', which='major', labelsize=6) 
     
     ax4 = fig1.add_subplot(334)
@@ -102,6 +106,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
         ax4.set_xlim(left=gmin[0],right=gmax[0])
         ax4.set_ylim(bottom=gmin[2],top=gmax[2])
     #ax4.set_xlabel("$\gamma_0$", size="11")
+    ax4.set_xticks([])
     ax4.set_ylabel("$\gamma_2$", size="11")
     ax4.tick_params(axis='both', which='major', labelsize=6) 
     
@@ -125,9 +130,11 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
         ax6.set_ylim(bottom=gmin[3],top=gmax[3])
     ax6.set_xlabel("$\gamma_1$", size="11")
     #ax6.set_ylabel("$\gamma_2$", size="11")
+    ax6.set_yticks([])
     ax6.tick_params(axis='both', which='major', labelsize=6) 
     
     fig1.tight_layout()
+    fig1.subplots_adjust(hspace=0.05,wspace=0.05)
     save_name = "custom_corner_"+opts.using_eos.split("/")[-1].split(".")[0]+"_b"+str(opts.buffer).replace(".","p")
     if opts.lnL_cut:
         save_name+="_Lcut"+str(opts.lnL_cut).split(".")[0]
