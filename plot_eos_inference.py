@@ -70,6 +70,8 @@ parser.add_argument('--plot-pd-name',type=str,default=None,help='Filename for th
 parser.add_argument('--plot-mr-name',type=str,default=None,help='Filename for the mass vs. radius plot')
 parser.add_argument('--show-grid',action='store_true',help="Show gridlines on plot; for MR plot only, right now")
 parser.add_argument('--fill-alpha',type=float,default=0.1,help="Alpha value for shaded regions. Default is 0.1; set to 0 where no --fill-color provided.")
+parser.add_argument('--xvar-single',type=str,default='rest-mass-density',help="X coord for --render-eos-objects plot")
+parser.add_argument('--yvar-single',type=str,default='pressure',help="Y coord for --render-eos-objects plot")
 
 parser.add_argument('--verbose', action = 'store_true', help = 'Print information on the progress of the code')
 
@@ -387,6 +389,8 @@ print("Plot options collected:\nLines:",plot_opts_list,"\nFills:",fill_opts_list
 
 #directly render all eos in provided range using their own axes
 if opts.render_eos_objects and opts.eos_file: 
+    xvar = opts.xvar_single
+    yvar = opts.yvar_single
     for i in np.arange(len(opts.eos_file)):
         my_eos_list = build_eos_sequence(opts.eos_file[i],lines_to_use_list[i])
         if my_eos_list is None:
@@ -395,8 +399,22 @@ if opts.render_eos_objects and opts.eos_file:
         print("EOS list initialized; total:",len(my_eos_list))
         
         for e in my_eos_list:
-            eosplot.render_eos(e.eos,'rest_mass_density', 'pressure')
+            eosplot.render_eos(e.eos,xvar, yvar) #'rest_mass_density', 'pressure'
     print("All EOS rendered.")
+    if xvar == 'rest_mass_density':
+        xlab = "\rho$ [g cm$^{-3}$]"
+    elif xvar == 'pressure':
+        xlab = "P$"
+    else:
+        xlab = xvar
+    if yvar == 'pressure':
+        ylab = "P$ [dyn cm$^{-2}$]"
+    elif yvar == 'energy_density':
+        ylab = "\epsilon(P)"
+    else:
+        ylab = yvar
+    plt.xlabel(r"log$_{10}\,"+" {}".format(xlab))#"\rho$ [g cm$^{-3}$]")
+    plt.ylabel(r"log$_{10}\,"+" {}".format(ylab))#"P$ [dyn cm$^{-2}$]")
     dpi_base=200
     res_base = 4*dpi_base
     plt.savefig("test_eos_pd_plot"+fig_extension,dpi=res_base)
