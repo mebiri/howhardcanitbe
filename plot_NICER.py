@@ -29,6 +29,7 @@ parser.add_argument('--scale-lnL',type=int,default=1,help="Scale factor to apply
 parser.add_argument('--plot-max',action='store_true')
 parser.add_argument('--plot-causality',action='store_true')
 parser.add_argument('--no-ellipse',action='store_true',help="Do not overplot Gaussians on data")
+parser.add_argument('--dat-alph',type=float,default=0.01,help="alpha val for data scatterplots")
 
 opts = parser.parse_args()
 
@@ -77,9 +78,9 @@ def just_obs():
     for j in np.arange(len(dat_rv)):
         print("Plotting data for: ",stars[j])
         if opts.no_ellipse:
-            plot_data_no_gaussian(dat_list[j],ax,color=colors_list[j],alph=0.01)
+            plot_data_no_gaussian(dat_list[j],ax,color=colors_list[j],alph=opts.dat_alph)
         else:
-            plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j],alph=0.01)#,name=stars[j])
+            plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j],alph=opts.dat_alph)#,name=stars[j])
         legends.append(Line2D([0],[0],marker='o',color='w',linestyle='',label=stars[j],markerfacecolor=colors_list[j],alpha=0.7,markersize=10))
        
     ax.set_xlim(left=7.5,right=22.0)
@@ -92,7 +93,7 @@ def just_obs():
     ax.set_axisbelow(True)
     ax.legend(handles=legends, loc='lower right',frameon=False)
     fig1.tight_layout()
-    plt.box(False)
+    #plt.box(False)
     plt.show()
     
     savename = "MR_NICER_data"
@@ -169,22 +170,22 @@ def mMax_likelihood(ax,alph,xlim,leg):
         leg.append(Patch(facecolor=colors[i], edgecolor=colors[i],label=names[i]))
 
 
-def buchdahl_BH_limits(ax, all = True):
+def buchdahl_BH_limits(ax, all_lim = True):
     import lal
     m = np.linspace(1.5,4.5, 300)
     r = 2.824*m*lal.MRSUN_SI/1e3 #10.1146/annurev-nucl-102711-095018
     ax.fill_between(r,m, 3*m, color='gainsboro')
-    if all:
+    if all_lim:
         r = 9*m/4*lal.MRSUN_SI/1e3 # 10.1103/PhysRevLett.121.161101
         ax.fill_between(r,m, 3*m, color='lightgrey')
         r = 2*m*lal.MRSUN_SI/1e3
         ax.fill_between(r,m, 2*m, color='silver')
-    if all:
-        ax.text(9.0, 2.4, "Causality limit", rotation=35)
+    if all_lim:
+        ax.text(9.0, 2.4, "Causality limit", rotation=33)
         ax.text(8.0, 2.55, "Buchdahl limit", rotation=41)
         ax.text(7.3, 2.7, "BH limit", rotation=45)
     else:
-        ax.text(8.0, 2.0, "Causality limit", rotation=52,size=10)
+        ax.text(8.0, 2.0, "Causality limit", rotation=50,size=10)
     return
 
 
