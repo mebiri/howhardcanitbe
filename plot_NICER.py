@@ -28,6 +28,7 @@ parser.add_argument('--field-R-max',type=float,default=18)
 parser.add_argument('--scale-lnL',type=int,default=1,help="Scale factor to apply to likelihood calcs (applied before log)")
 parser.add_argument('--plot-max',action='store_true')
 parser.add_argument('--plot-causality',action='store_true')
+parser.add_argument('--no-ellipse',action='store_true',help="Do not overplot Gaussians on data")
 
 opts = parser.parse_args()
 
@@ -75,10 +76,13 @@ def just_obs():
     colors_list = ['green','purple','red','orange']
     for j in np.arange(len(dat_rv)):
         print("Plotting data for: ",stars[j])
-        plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j],alph=0.01,markersize=9)#,name=stars[j])
-        legends.append(Line2D([0],[0],marker='o',color='w',label=stars[j],markerfacecolor=colors_list[j],alpha=0.8,markersize=9))
+        if opts.no_ellipse:
+            plot_data_no_gaussian(dat_list[j],ax,color=colors_list[j],alph=0.01)
+        else:
+            plot_data_and_gaussian(dat_mn[j],dat_cov[j],dat_rv[j],dat_list[j],ax,color=colors_list[j],alph=0.01)#,name=stars[j])
+        legends.append(Line2D([0],[0],marker='o',color='w',linestyle='',label=stars[j],markerfacecolor=colors_list[j],alpha=0.7,markersize=10))
        
-    ax.set_xlim(left=7.5,right=24.0)
+    ax.set_xlim(left=7.5,right=22.0)
     ax.set_ylim(bottom=0.3,top=2.5)
     ax.set_xlabel("Radius [km]", size="20")
     ax.set_ylabel('Mass [M/M$_\odot$]', size="20")
@@ -86,12 +90,19 @@ def just_obs():
     ax.set_yticks(ticks=[0.5,1.0,1.5,2.0,2.5])
     ax.grid(True)
     ax.set_axisbelow(True)
-    ax.legend(handles=legends, fontsize='9', loc='lower right')
+    ax.legend(handles=legends, loc='lower right',frameon=False)
     fig1.tight_layout()
     plt.box(False)
     plt.show()
     
-    plt.savefig("MR_NICER_data.png")
+    savename = "MR_NICER_data"
+    if opts.no_ellipse:
+        savename += "_no_ellipse"
+    if opts.plot_max:
+        savename += "_mmax"
+    if opts.plot_causality:
+        savename += "_causal"
+    plt.savefig(savename+".png")
     print("Saved.") 
 
 
@@ -126,7 +137,7 @@ def plot_data_and_gaussian(mean, covariance, rv, data, ax, color= 'pink', name =
         color = None
     else: pass
     
-    ax.scatter(data[:,a], data[:,b], alpha=alph, s = 2, color = color, label = name,marker="o",linewidth=0)
+    ax.scatter(data[:,a], data[:,b], alpha=alph, s = 8, color = color, label = name,marker="o",linewidth=0)
     #Ellipses for 1,2,3 sigma
     from matplotlib.patches import Ellipse
     for j in range(1, 4):
@@ -137,11 +148,19 @@ def plot_data_and_gaussian(mean, covariance, rv, data, ax, color= 'pink', name =
     return
 
 
+def plot_data_no_gaussian(data, ax, color= 'pink', name = None, alph=0.01):
+    a, b = 0,1
+    
+    ax.scatter(data[:,a], data[:,b], alpha=alph, s = 8, color = color, label = name,marker="o",linewidth=0)
+    
+    return
+
+
 def mMax_likelihood(ax,alph,xlim,leg):    
     m = [2.14, 2.01, 1.908] #3 high-mass pulsars (Dietrich et al. 2020)
     sig = [0.1, 0.04, 0.016]
     names = ["J0740","J0348","J1614"]
-    colors= ["green","yellow","blue"]
+    colors= ["green","magenta","blue"]
     
     x = np.linspace(7.5,xlim, 500)
 
@@ -165,7 +184,7 @@ def buchdahl_BH_limits(ax, all = True):
         ax.text(8.0, 2.55, "Buchdahl limit", rotation=41)
         ax.text(7.3, 2.7, "BH limit", rotation=45)
     else:
-        ax.text(8.5, 2.1, "Causality limit", rotation=50)
+        ax.text(8.0, 2.0, "Causality limit", rotation=52,size=10)
     return
 
 
