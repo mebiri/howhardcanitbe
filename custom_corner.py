@@ -18,6 +18,8 @@ parser.add_argument('--lnL-cut',type=float,default=None,help="maybe curoff lnLs 
 parser.add_argument('--use-alt-buffer',action='store_true',help="use symmetric buffer implementation (total buffer = 2x opts.buffer)")
 parser.add_argument('--use-all-composite-but-grayscale',action='store_true',help="plot all points in greyscale, color points on top")
 parser.add_argument('--match-hypercube',action='store_true',help="Fix axis bounds around hypercube")
+parser.add_argument('--cube-color',type=str,default="tab:blue",help="Color for hypercube points")
+parser.add_argument('--custom-bound',type=str,action='append',help="Custom bounds for plots; supply empty str for unmodded param (will match hypercube)")
 
 opts = parser.parse_args()
 
@@ -54,18 +56,26 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     if grey_dat is not None:
         grey = True
     cm = 'rainbow_r'
+    sc = opts.cube_color
     
     gmin = []
     gmax = []
     for i in np.arange(4):
-        gmin.append(min(gammas[:,i])-(0.1/(i+1)))
-        gmax.append(max(gammas[:,i])+(0.1/(i+1)))
+        gmin.append(min(gammas[:,i])-(0.1*np.abs(min(gammas[:,i]))))#/(i+1)))
+        gmax.append(max(gammas[:,i])+(0.1*np.abs(max(gammas[:,i]))))#/(i+1)))
+    gmin[3] = gmin[3]-0.01
+    gmax[3] = gmax[3]+0.01
+    if opts.custom_bound:
+        for i, r in enumerate(opts.custom_bound):
+            if r != "":
+                gmin[i] = r.replace("[","").replace("]","").split(",")[0]
+                gmax[i] = r.replace("[","").replace("]","").split(",")[1]
     
     ax1 = fig1.add_subplot(331)
-    ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color="tab:blue")
+    ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color=sc)
     if grey: ax1.scatter(grey_dat[:,0],grey_dat[:,1],marker=".",s=1,color='0.5')
     ax1.scatter(g_dat[:,0],g_dat[:,1],c=lnL_list,marker=".",s=1,cmap=cm)
-    if opts.match_hypercube: 
+    if opts.match_hypercube or opts.custom_bound: 
         ax1.set_xlim(left=gmin[0],right=gmax[0])
         ax1.set_ylim(bottom=gmin[1],top=gmax[1])
     #ax1.set_xlabel("$\gamma_0$", size="11")
@@ -74,10 +84,10 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax1.tick_params(axis='both', which='major', labelsize=10) 
     
     ax2 = fig1.add_subplot(335)
-    ax2.scatter(gammas[:,1],gammas[:,2],marker=".",color="tab:blue")
+    ax2.scatter(gammas[:,1],gammas[:,2],marker=".",color=sc)
     if grey: ax2.scatter(grey_dat[:,1],grey_dat[:,2],marker=".",s=1,color='0.5')
     ax2.scatter(g_dat[:,1],g_dat[:,2],c=lnL_list,marker=".",s=1,cmap=cm)
-    if opts.match_hypercube: 
+    if opts.match_hypercube or opts.custom_bound: 
         ax2.set_xlim(left=gmin[1],right=gmax[1])
         ax2.set_ylim(bottom=gmin[2],top=gmax[2])
     #ax2.set_xlabel("$\gamma_1$", size="11")
@@ -87,10 +97,10 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax2.tick_params(axis='both', which='major', labelsize=10) 
     
     ax3 = fig1.add_subplot(339)
-    ax3.scatter(gammas[:,2],gammas[:,3],marker=".",color="tab:blue")
+    ax3.scatter(gammas[:,2],gammas[:,3],marker=".",color=sc)
     if grey: ax3.scatter(grey_dat[:,2],grey_dat[:,3],marker=".",s=1,color='0.5')
     ax3.scatter(g_dat[:,2],g_dat[:,3],c=lnL_list,marker=".",s=1,cmap=cm)
-    if opts.match_hypercube: 
+    if opts.match_hypercube or opts.custom_bound: 
         ax3.set_xlim(left=gmin[2],right=gmax[2])
         ax3.set_ylim(bottom=gmin[3],top=gmax[3])
     ax3.set_xlabel("$\gamma_2$", size="11")
@@ -99,10 +109,10 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax3.tick_params(axis='both', which='major', labelsize=10) 
     
     ax4 = fig1.add_subplot(334)
-    ax4.scatter(gammas[:,0],gammas[:,2],marker=".",color="tab:blue")
+    ax4.scatter(gammas[:,0],gammas[:,2],marker=".",color=sc)
     if grey: ax4.scatter(grey_dat[:,0],grey_dat[:,2],marker=".",s=1,color='0.5')
     ax4.scatter(g_dat[:,0],g_dat[:,2],c=lnL_list,marker=".",s=1,cmap=cm)
-    if opts.match_hypercube: 
+    if opts.match_hypercube or opts.custom_bound: 
         ax4.set_xlim(left=gmin[0],right=gmax[0])
         ax4.set_ylim(bottom=gmin[2],top=gmax[2])
     #ax4.set_xlabel("$\gamma_0$", size="11")
@@ -111,10 +121,10 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax4.tick_params(axis='both', which='major', labelsize=10) 
     
     ax5 = fig1.add_subplot(337)
-    ax5.scatter(gammas[:,0],gammas[:,3],marker=".",color="tab:blue")
+    ax5.scatter(gammas[:,0],gammas[:,3],marker=".",color=sc)
     if grey: ax5.scatter(grey_dat[:,0],grey_dat[:,3],marker=".",s=1,color='0.5')
     ax5.scatter(g_dat[:,0],g_dat[:,3],c=lnL_list,marker=".",s=1,cmap=cm)
-    if opts.match_hypercube: 
+    if opts.match_hypercube or opts.custom_bound: 
         ax5.set_xlim(left=gmin[0],right=gmax[0])
         ax5.set_ylim(bottom=gmin[3],top=gmax[3])
     ax5.set_xlabel("$\gamma_0$", size="11")
@@ -122,10 +132,10 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax5.tick_params(axis='both', which='major', labelsize=10) 
     
     ax6 = fig1.add_subplot(338)
-    ax6.scatter(gammas[:,1],gammas[:,3],marker=".",color="tab:blue")
+    ax6.scatter(gammas[:,1],gammas[:,3],marker=".",color=sc)
     if grey: ax6.scatter(grey_dat[:,1],grey_dat[:,3],marker=".",s=1,color='0.5')
     ax6.scatter(g_dat[:,1],g_dat[:,3],c=lnL_list,marker=".",s=1,cmap=cm)
-    if opts.match_hypercube: 
+    if opts.match_hypercube or opts.custom_bound: 
         ax6.set_xlim(left=gmin[1],right=gmax[1])
         ax6.set_ylim(bottom=gmin[3],top=gmax[3])
     ax6.set_xlabel("$\gamma_1$", size="11")
