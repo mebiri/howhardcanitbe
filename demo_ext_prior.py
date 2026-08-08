@@ -23,6 +23,7 @@ rv = None
 nm = 1
 eos = None
 rift = False
+scale = 1.0
 
 #Try to import lalsimutils (will fail on local machines)
 try:
@@ -56,11 +57,13 @@ def initialize_me(**kwargs):
     #needed in the likelihood_evaluation() function, or to create an EOS object
     #for CIP (not done here)
     
-    #----- Initialize population & EOS data -----
+    #----- Initialize parameter data -----
     global rv
+    global scale
     #weight parameter also gets used for covariance here, just for fun
     rv = multivariate_normal(mean=all_params[:2], cov=(all_params[2]**2)*np.diag(np.ones(2)))
-        
+    scale = 100.0/all_params[2]
+    
     #----- Initialize EOS object -----
     global eos
     if (rift):
@@ -110,6 +113,6 @@ def likelihood_evaluation(*X):
     if nm == 0:
         return -np.inf
     else:
-        return rv.logpdf(x_in) - np.log(nm)
+        return rv.logpdf(x_in) - np.log(nm) + scale
 
 
