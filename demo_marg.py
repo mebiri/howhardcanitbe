@@ -2,7 +2,9 @@
 """
 Example marginalization (MARG) script for HyperPipe. 
 
-Compute the marginal likelihood L_k = \prod_k w_k in a square  
+Compute the marginal likelihood L_k = \prod_k w_k in a square, where:
+    w_k = p(x)*g_k(x) for given EOS parameters p and data points g_k
+Calls on external prior code for an additional weight factor
 """
 
 import numpy as np
@@ -10,8 +12,6 @@ from scipy.stats import multivariate_normal
 from scipy.integrate import dblquad
 import argparse
 import sys
-
-internal_dtype = np.float32
 
 parser = argparse.ArgumentParser()
 #HyperPipe API-required arguments:
@@ -53,20 +53,18 @@ def compute_product(m_obs,pop_norm):
         lybd = m_obs[i][1] - 0.5 #lower y bound
         tybd = m_obs[i][1] + 0.5 #upper y bound
         
-        #truncate bounds to be within 0 < x0 < 3, 0 < x1 < 2 (rectangle)
+        #truncate bounds to be within 0 < x0, x1 < 2 (square)
         if lxbd < 0.0: 
             lxbd = 0.0
-        if rxbd > 3.0:
-            rxbd = 3.0
+        if rxbd > 2.0:
+            rxbd = 2.0
         if lybd < 0.0:
             lybd = 0.0
         if tybd > 2.0:
             tybd = 2.0
         
-        #print("bounds:",lxbd,rxbd,lybd,tybd)
         #integrate over rectangle:
         w_k, err = dblquad(int_rv, lxbd, rxbd, lybd, tybd)
-        #print(" res:",w_k)
         partial_sum += w_k #save log_likelihood
         partial_var += (err/w_k)**2 #correct error propagation
     
@@ -125,7 +123,7 @@ def save_results(out_grid, header):
         #   Warning: integral_result.dat uses *original* prior, before any reweighting
         if opts.save_all_files:
             #File (1/7): MARG-0-0.dat
-            np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])#+lnL_shift])
+            np.savetxt(opts.fname_output_integral+".dat", [ln_integrand_value])
         
         params_here = line[2:]
         annotation_header = header # this will/must be lnL sigma_lnL and then parameter names, which we want to preserve
@@ -139,12 +137,12 @@ def save_results(out_grid, header):
         
 
 #----------------------------------------------------------
-if (not opts.fname) and opts.using_eos is None:
+if (not opts.fname) and opts.using_eos is None: #offline test run defaults
     print("--Warning: Test Mode: using preset files--")
     opts.fname="demo_data.txt" 
     opts.using_eos= "demo_initial_grid.txt"
     opts.using_eos_index = 0
-    opts.n_events_to_analyze=1000
+    opts.n_events_to_analyze=10
     opts.verbose = False
     opts.chunk_save = True
     opts.save_all_files = False
@@ -216,17 +214,19 @@ if opts.verbose: print("Output test:",dat_out[0])
 lineheader = ' '.join(map(str,param_names))+"\n" #to match CIP extracted header
 save_results(dat_out,lineheader)
 
-#Scatterplot:
-import matplotlib.pyplot as plt
-#import matplotlib as mpl
-fig1 = plt.figure(figsize=(8,5),dpi=250) 
-ax = fig1.add_subplot(111)
-ax.scatter(dat_out[:,2],dat_out[:,3],c=dat_out[:,0],marker=".")#,cmap=mpl.cm.cool)
-ax.set_xlabel("$\mu_1$", size="11")
-ax.set_ylabel("$\mu_2$", size="11")
-ax.tick_params(axis='both', which='major', labelsize=10) 
-ax.axis('scaled')
-fig1.tight_layout()
-plt.show(block=False)
+# =============================================================================
+# #Scatterplot:
+# import matplotlib.pyplot as plt
+# #import matplotlib as mpl
+# fig1 = plt.figure(figsize=(8,5),dpi=250) 
+# ax = fig1.add_subplot(111)
+# ax.scatter(dat_out[:,2],dat_out[:,3],c=dat_out[:,0],marker=".")#,cmap=mpl.cm.cool)
+# ax.set_xlabel("$\mu_1$", size="11")
+# ax.set_ylabel("$\mu_2$", size="11")
+# ax.tick_params(axis='both', which='major', labelsize=10) 
+# ax.axis('scaled')
+# fig1.tight_layout()
+# plt.show(block=False)
+# =============================================================================
 
 

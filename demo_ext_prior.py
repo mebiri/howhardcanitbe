@@ -62,7 +62,12 @@ def initialize_me(**kwargs):
     global scale
     #weight parameter also gets used for covariance here, just for fun
     rv = multivariate_normal(mean=all_params[:2], cov=(all_params[2]**2)*np.diag(np.ones(2)))
-    scale = 100.0/all_params[2]
+    #random tuning nonsense to set the weight factor:
+    scale = 100.0*all_params[2] 
+    if all_params[0] < 0.9 or all_params[0] > 1.1 or all_params[1] < 0.9 or all_params[1] > 1.1:
+        scale = -10.0 #downweight outside of box
+    elif all_params[1] > 1:
+        scale += norm.pdf(all_params[1],loc=1.05,scale=0.05) #bias weight in top half
     
     #----- Initialize EOS object -----
     global eos

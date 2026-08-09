@@ -71,23 +71,27 @@ def get_bounds(param_list, bounds_dict, **kwargs):
         buffer = 0.0
         print(" Warning: no buffer provided")
     
+    rot_mat = (np.sqrt(2)/2)*np.array([[1,-1],[1,1]]) #45 degree rotation in 2D
+    
     #set rotated bounds to use
     rot_coords = {}
-    rot_coords["r0"] = [-1.41421, 1.41421]
-    rot_coords["r1"] = [-1.41421, 1.41421]
-    
-    for indx, param in enumerate(rot_coords.keys()):
-        # apply hypercube buffer
-        ubound = rot_coords[param][1] + buffer*abs(rot_coords[param][1])
-        lbound = rot_coords[param][0] - buffer*abs(rot_coords[param][0])
-        rot_coords[param] = [lbound,ubound]
+    for key in ["x0","x1"]:
+        #N.B.: requires bounds_dict to be defined: set in PUFF using --parameter-range
+        x = np.array(bounds_dict[key])
+        #rotate
+        x_rot = np.matmul(rot_mat,x.T).T
+        
+        #apply hypercube buffer
+        ubound = x_rot[1] + buffer*abs(x_rot[1])
+        lbound = x_rot[0] - buffer*abs(x_rot[0])
+        rot_coords[key] = [lbound,ubound]
     
     #put updated bounds into new dict (hopefully same order)
     buff_dict = {}
     i = 0
     for p in bounds_dict.keys():
         if p == "x"+str(i):
-            buff_dict[p] = rot_coords["r"+str(i)]
+            buff_dict[p] = rot_coords[p]
             i += 1
         else:
             buff_dict[p] = bounds_dict[p]
