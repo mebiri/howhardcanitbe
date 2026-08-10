@@ -65,9 +65,9 @@ def initialize_me(**kwargs):
     #random tuning nonsense to set the weight factor:
     scale = 100.0*all_params[2] 
     if all_params[0] < 0.9 or all_params[0] > 1.1 or all_params[1] < 0.9 or all_params[1] > 1.1:
-        scale = -10.0 #downweight outside of box
-    elif all_params[1] > 1:
-        scale += norm.pdf(all_params[1],loc=1.05,scale=0.05) #bias weight in top half
+        scale += -200.0 #downweight outside of box
+    else:
+        scale += 10*norm.pdf(all_params[0],loc=1.0,scale=0.1)*norm.pdf(all_params[1],loc=1.0,scale=0.1) #bias towards center
     
     #----- Initialize EOS object -----
     global eos
