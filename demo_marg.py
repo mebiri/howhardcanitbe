@@ -44,9 +44,9 @@ def compute_product(m_obs,pop_norm):
         
         #integrand is product of gaussians: p(m)*g_k(m)
         if supplemental_ln_likelihood:
-            int_rv = lambda y, x: pop_norm.pdf([x,y])*g_k.pdf([x,y])*np.exp(supplemental_ln_likelihood(x,y))
+            int_rv = lambda y, x: pop_norm.logpdf([x,y])+g_k.logpdf([x,y])+supplemental_ln_likelihood(x,y)
         else:
-            int_rv = lambda y, x: pop_norm.pdf([x,y])*g_k.pdf([x,y])
+            int_rv = lambda y, x: pop_norm.logpdf([x,y])+g_k.logpdf([x,y])
         
         #initial integration range (rectangle)
         lxbd = m_obs[i][0] - 0.5 #left x bound
@@ -66,7 +66,7 @@ def compute_product(m_obs,pop_norm):
         
         #integrate over rectangle:
         w_k, err = dblquad(int_rv, lxbd, rxbd, lybd, tybd)
-        partial_sum += np.log(w_k) #save log_likelihood
+        partial_sum += w_k #save log_likelihood
         partial_var += (err/w_k)**2 #correct error propagation
     
     if opts.verbose: print(" ",partial_sum, np.sqrt(partial_var))

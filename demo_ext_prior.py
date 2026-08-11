@@ -63,6 +63,7 @@ def initialize_me(**kwargs):
     #set up global variables that will be needed during integration
     rv = multivariate_normal(mean=all_params[:2], cov=0.05*np.diag(np.ones(2)))
     scale = norm.pdf(all_params[2],loc=0,scale=0.3)
+    print("Scale value is:",scale)
     
     #----- Initialize EOS object -----
     global eos
