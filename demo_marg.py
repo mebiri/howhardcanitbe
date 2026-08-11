@@ -2,9 +2,9 @@
 """
 Example marginalization (MARG) script for HyperPipe. 
 
-Compute the marginal likelihood L_k = \prod_k w_k in a square, where:
-    w_k = p(x)*g_k(x) for given EOS parameters p and data points g_k
-Calls on external prior code for an additional weight factor
+Compute the marginal likelihood L_k = \prod_k w_k in a tetrahedron, where:
+    w_k = p(x)*g_k(x) for given parameters p and data points g_k in the xy-plane
+Calls on external prior code for factor examining height on z-axis
 """
 
 import numpy as np
@@ -34,18 +34,19 @@ parser.add_argument("--supplementary-likelihood-factor-function", default=None,t
 opts = parser.parse_args()
     
 
+#function for this specific example; contents of MARG scripts will vary by problem
 def compute_product(m_obs,pop_norm):
     partial_sum = 0.0
     partial_var = 0.0
     for i in range(len(m_obs)):
         #distribution around "real" data point:
-        g_k = multivariate_normal(mean=m_obs[i,:2], cov=np.diag([m_obs[i,2],m_obs[i,3]]))
+        g_k = multivariate_normal(mean=m_obs[i,:2], cov=np.diag([m_obs[i,3]**2,m_obs[i,4]**2]))
         
         #integrand is product of gaussians: p(m)*g_k(m)
         if supplemental_ln_likelihood:
-            int_rv = lambda y, x: pop_norm.logpdf([x,y])+g_k.logpdf([x,y])+supplemental_ln_likelihood(x,y)
+            int_rv = lambda y, x: pop_norm.pdf([x,y])*g_k.pdf([x,y])*np.exp(supplemental_ln_likelihood(x,y))
         else:
-            int_rv = lambda y, x: pop_norm.logpdf([x,y])+g_k.logpdf([x,y])
+            int_rv = lambda y, x: pop_norm.pdf([x,y])*g_k.pdf([x,y])
         
         #initial integration range (rectangle)
         lxbd = m_obs[i][0] - 0.5 #left x bound
@@ -53,19 +54,19 @@ def compute_product(m_obs,pop_norm):
         lybd = m_obs[i][1] - 0.5 #lower y bound
         tybd = m_obs[i][1] + 0.5 #upper y bound
         
-        #truncate bounds to be within 0 < x0, x1 < 2 (square)
-        if lxbd < 0.0: 
-            lxbd = 0.0
-        if rxbd > 2.0:
-            rxbd = 2.0
-        if lybd < 0.0:
-            lybd = 0.0
-        if tybd > 2.0:
-            tybd = 2.0
+        #truncate bounds to be within -0.6 < x0, x1 < 0.6 (square)
+        if lxbd < -0.6: 
+            lxbd = -0.6
+        if rxbd > 0.6:
+            rxbd = 0.6
+        if lybd < -0.6:
+            lybd = 0.6
+        if tybd > 0.6:
+            tybd = 0.6
         
         #integrate over rectangle:
         w_k, err = dblquad(int_rv, lxbd, rxbd, lybd, tybd)
-        partial_sum += w_k #save log_likelihood
+        partial_sum += np.log(w_k) #save log_likelihood
         partial_var += (err/w_k)**2 #correct error propagation
     
     if opts.verbose: print(" ",partial_sum, np.sqrt(partial_var))
@@ -78,7 +79,7 @@ def save_results(out_grid, header):
     CIP saves up to 7 files for each EOS line. HyperPipe only uses 1 of those files:
         MARG-$(macroid)-$(macroevent)+annotation.dat
     with format:
-        # lnL sigma_lnL x0 x1 w
+        # lnL sigma_lnL x0 x1 x2
     Any MARG script used in HyperPipe MUST, at minimum, create this output file with this format
     '''
     if opts.chunk_save:
@@ -142,7 +143,7 @@ if (not opts.fname) and opts.using_eos is None: #offline test run defaults
     opts.fname="demo_data.txt" 
     opts.using_eos= "demo_initial_grid.txt"
     opts.using_eos_index = 0
-    opts.n_events_to_analyze=10
+    opts.n_events_to_analyze=100
     opts.verbose = False
     opts.chunk_save = True
     opts.save_all_files = False
@@ -154,7 +155,7 @@ mass_dat = np.genfromtxt(opts.fname,names=True) #will be demo_data.txt (renamed 
 param_names = list(mass_dat.dtype.names)
 dat_as_array = mass_dat.view((float, len(param_names)))
 
-#Access EOS grid from file:
+#Access parameter grid from file:
 fname = opts.using_eos.replace('file:', '')
 pop_dat = None
 try:
@@ -183,10 +184,10 @@ if opts.supplementary_likelihood_factor_code and opts.supplementary_likelihood_f
     supplemental_init = getattr(external_likelihood_module, 'initialize_me') #find initialize_me()
 
 
-#grid to store output for all EOS lines
+#grid to store output for all parameter lines
 dat_out = np.zeros((npts,len(pop_as_array[0]))) #effectively forcing a deep copy of pop_dat
 
-#do integral for each EOS line
+#do integral for each parameter line
 for n in np.arange(npts):
     line = pop_as_array[n,2:] #ignore lnL, sigma_lnL cols
     if opts.verbose: print("line",n,":",line)
@@ -197,8 +198,10 @@ for n in np.arange(npts):
         dat_out[n][0] = -2e6 #return a large negative value to strongly downweight this EOS parameter set; do not set to -inf or exit with success
         dat_out[n][1] = 1. #arbitrary non-zero sigma (MUST be non-zero!)
     else:
-        #2D Gaussian of population  - weight used as variance here
-        rv = multivariate_normal(mean=line[:2], cov=(line[2]**2)*np.diag(np.ones(2)))
+        #math for the problem goes here:
+        
+        #2D Gaussian of parameters
+        rv = multivariate_normal(mean=line[:2], cov=0.01*np.diag(np.ones(2)))
         
         #initialize external prior
         if supplemental_ln_likelihood:
@@ -206,8 +209,8 @@ for n in np.arange(npts):
             supplemental_init(**args_init) #run initialize_me('input_line'=dat_as_array, 'param_names'=param_names)
         
         dat_out[n][0], dat_out[n][1] = compute_product(dat_as_array,rv)
-        dat_out[n][1] = dat_out[n][1]/opts.std_scale_factor
-    dat_out[n][2:] = line
+        dat_out[n][1] = dat_out[n][1]/opts.std_scale_factor #rescale to avoid small variances
+    dat_out[n][2:] = line #fill in parameters for output grid (necessary)
 if opts.verbose: print("Output test:",dat_out[0])
 
 #save results
@@ -227,6 +230,6 @@ save_results(dat_out,lineheader)
 # ax.axis('scaled')
 # fig1.tight_layout()
 # plt.show(block=False)
+# 
 # =============================================================================
-
 

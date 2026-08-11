@@ -2,10 +2,10 @@
 """
 External prior code for hyperpipe. 
 Possesses an initialize_me() function and a likelihood evaluation function. 
-Calculates likelihood of initialized population parameters from a norm.
+Calculates likelihood of initialized parameters from a norm.
 
---!! N.B. POPULATION/EOS FILE EXPECTED TO CONTAIN THESE COLUMNS !!--
-    # lnL sigma_lnL x0 x1 w
+--!! N.B. EOS FILE EXPECTED TO CONTAIN THESE COLUMNS !!--
+    # lnL sigma_lnL x0 x1 x2
 """
 
 #! /usr/bin/env python
@@ -60,25 +60,18 @@ def initialize_me(**kwargs):
     #----- Initialize parameter data -----
     global rv
     global scale
-    #weight parameter also gets used for covariance here, just for fun
-    rv = multivariate_normal(mean=all_params[:2], cov=(all_params[2]**2)*np.diag(np.ones(2)))
-    #random tuning nonsense to set the weight factor:
-    scale = 100.0*all_params[2] 
-    if all_params[0] < 0.9 or all_params[0] > 1.1 or all_params[1] < 0.9 or all_params[1] > 1.1:
-        scale += -200.0 #downweight outside of box
-    else:
-        scale += 10*norm.pdf(all_params[0],loc=1.0,scale=0.1)*norm.pdf(all_params[1],loc=1.0,scale=0.1) #bias towards center
+    #set up global variables that will be needed during integration
+    rv = multivariate_normal(mean=all_params[:2], cov=0.05*np.diag(np.ones(2)))
+    scale = norm.pdf(all_params[2],loc=0,scale=0.3)
     
     #----- Initialize EOS object -----
     global eos
     if (rift):
-        eos = None #create EOS object here if using with CIP
+        eos = None #can create EOS object here if using with CIP
     
     #----- Initialize normalization constant -----
     global nm
-    #xbounds = [1,3] 
-    #ybounds = [1,2]
-    nm = 1 #should compute normalization factor, usually
+    nm = 1 #nominal value; should properly compute this in real runs
     if nm == -1:
         return -2.5e6 #specific failcode for debugging purposes
     print("Normalization constant set to",nm)
@@ -109,15 +102,17 @@ def retrieve_eos(**kwargs):
 
 ####################### LIKELIHOOD EVAL #######################
 
+#This function will get called repeatedly by the main MARG script
+#*X should contain data list in same order as params given to initialize_me()
 def likelihood_evaluation(*X):
-    #*X contains data list in same order as params given to initialize_me()
+    
+    #do any needed conversions/calculations here
     x_in = np.asarray([X[0],X[1]],dtype=np.float64) 
-    #x_in = np.asarray([X[cv_params[0][1]],X[cv_params[1][1]]],dtype=np.float64).T
 
-    #Likelihood (w/ normalization constant):
+    #return log_likelihood (w/ normalization constant):
     if nm == 0:
         return -np.inf
     else:
-        return rv.logpdf(x_in) - np.log(nm) + scale
+        return rv.logpdf(x_in) + np.log(scale) - np.log(nm)
 
 
