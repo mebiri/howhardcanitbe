@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#! /usr/bin/env python
 """
 convert gamma points to shifted, rotated coords
 Sum_k g_k x^k -> Sum_g c_g (x - x0)^g
@@ -8,6 +8,7 @@ c1 = g1 + 2g2(x0) + 3g3(x0)^2
 c2 = 2g2 + 6g3(x0)
 c3 = 6g3
 """
+### -*- coding: utf-8 -*-
 
 import numpy as np
 import argparse
@@ -55,7 +56,8 @@ for i,g in enumerate(gindx):
     eos[:,g] = c_dat[:,i]
 
 #write out
-outname = "converted_grid.dat" #+ opts.posterior_file.split("/")[-1].split["."][0]
+outx = str(opts.x0).replace(".","p")
+outname = "grid_con-"+outx+".dat" #+ opts.posterior_file.split("/")[-1].split["."][0]
 headers = "lnL " + " ".join(coord_names[1:])
 np.savetxt(outname, eos,header=headers)
 print("Done.")
