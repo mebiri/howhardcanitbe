@@ -96,15 +96,15 @@ def generate_eos(eos_line, eos_headers, eos_param="spectral",save_header=True,ve
 
 
 #same as in plot_eos_inference.py
-def build_eos_sequence(lines,param_names):
+def build_eos_sequence(filename, lines):
     #This gets 1+ lines of data; it will also get the names for each column, after header:
-    #dat = np.genfromtxt(filename,names=True)[lines]
-    #param_names = dat.dtype.names #separate out the names from the data
-    #all_params = dat.view((float, len(param_names)))
+    dat = np.genfromtxt(filename,names=True)[lines]
+    param_names = dat.dtype.names #separate out the names from the data
+    all_params = dat.view((float, len(param_names)))
     
     #load eos data directly from file, make EOSs via EOSManager
     eos_names = []
-    eos_dat = np.zeros((len(lines),len(param_names[2:])))
+    eos_dat = np.zeros((len(all_params),len(param_names[2:])))
     pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
     j= 0
     for i in param_names[2:]: #should be anything past lnL, sig_lnL
@@ -112,7 +112,7 @@ def build_eos_sequence(lines,param_names):
             continue
         else: #anything that isn't m1, m2, sig
             eos_names.append(i)
-            eos_dat[:,j] = lines[:,param_names.index(i)]
+            eos_dat[:,j] = all_params[:,param_names.index(i)]
             j+=1
     
     if len(eos_names) > 0:
@@ -200,17 +200,17 @@ else: #basically: opts.plot_pd or opts.eos_file
         line = all_dat[indx]
         oob_checks = 0
         in_checks = 0
-        for p in my_bounds.keys()[:2]:
+        for p in list(my_bounds.keys())[:2]:
             if p in param_names:
                 col = param_names.index(p)
                 if line[col] < my_bounds[p][0] or line[col] > my_bounds[p][1]:
                     oob_checks += 1
                 else:
                     in_checks += 1
-        if oob_checks == len(my_bounds.keys()[:2]):
+        if oob_checks == 2:#len(my_bounds.keys()[:2]):
             oob_lines_list.append(line)
             oob_indx.append(indx)
-        elif in_checks == len(my_bounds.keys()[:2]):
+        elif in_checks == 2:#len(my_bounds.keys()[:2]):
             in_lines_list.append(line)
             in_indx.append(indx)
         if indx == len(dat) - 1:
@@ -252,13 +252,13 @@ if not opts.no_plot:
     
     xvar = opts.xvar_single
     yvar = opts.yvar_single
-    oob_eos_list = build_eos_sequence(all_dat[oob_lines_list],param_names)
+    oob_eos_list = build_eos_sequence(opts.eos_file, oob_lines_list)
     if oob_eos_list is None:
         print("All provided EOS parameters failed; exiting.")
         sys.exit(0)
     print("EOS list initialized; total:",len(oob_eos_list))
     
-    in_eos_list = build_eos_sequence(all_dat[in_lines_list],param_names)
+    in_eos_list = build_eos_sequence(opts.eos_file,in_lines_list)
     if in_eos_list is None:
         print("All provided EOS parameters failed; exiting.")
         sys.exit(0)
