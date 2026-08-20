@@ -252,13 +252,13 @@ if not opts.no_plot:
     
     xvar = opts.xvar_single
     yvar = opts.yvar_single
-    oob_eos_list = build_eos_sequence(opts.eos_file, oob_lines_list)
+    oob_eos_list = build_eos_sequence(opts.eos_file, oob_indx)
     if oob_eos_list is None:
         print("All provided EOS parameters failed; exiting.")
         sys.exit(0)
     print("EOS list initialized; total:",len(oob_eos_list))
     
-    in_eos_list = build_eos_sequence(opts.eos_file,in_lines_list)
+    in_eos_list = build_eos_sequence(opts.eos_file,in_indx)
     if in_eos_list is None:
         print("All provided EOS parameters failed; exiting.")
         sys.exit(0)
@@ -272,19 +272,21 @@ if not opts.no_plot:
             in_opts['color'] = opts.eos_color[1]
     
     for e in in_eos_list[:opts.points_in]:
-        eosplot.render_eos(e,xvar, yvar,**in_opts) #'rest_mass_density', 'pressure'
+        eosplot.render_eos(e,xvar, yvar,npts=500,**in_opts) #'rest_mass_density', 'pressure'
     for e in oob_eos_list[:opts.points_oob]:
-        eosplot.render_eos(e,xvar, yvar,**oob_opts) #'rest_mass_density', 'pressure'
+        eosplot.render_eos(e,xvar, yvar,npts=500,**oob_opts) #'rest_mass_density', 'pressure'
+    plt.xlim(10.0**14,10.0**18)
+    plt.ylim(bottom=10.0**32)
     print("All EOS rendered.")
     
     if xvar == 'rest_mass_density':
-        xlab = r"log$_{10}\, \rho$ [g cm$^{-3}$]"
+        xlab = r"\rho$ [g cm$^{-3}$]" #log$_{10}\, 
     elif xvar == 'pressure':
         xlab = r"log$_{10}\,\, p$"
     else:
         xlab = xvar
     if yvar == 'pressure':
-        ylab = r"log$_{10}\, P$ [dyn cm$^{-2}$]"
+        ylab = r"P$ [dyn cm$^{-2}$]" #log$_{10}\, 
     elif yvar == 'energy_density':
         ylab = r"log$_{10}\,\, \epsilon$"
     else:
