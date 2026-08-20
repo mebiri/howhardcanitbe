@@ -6,7 +6,7 @@ Pick out specific EOS points (specifically OOB points) & plot them P(rho)
 import numpy as np
 import argparse
 
-#import RIFT.physics.EOSManager as EOSManager
+import RIFT.physics.EOSManager as EOSManager
 import RIFT.plot_utilities.EOSPlotUtilities as eosplot
 
 parser = argparse.ArgumentParser()
@@ -39,6 +39,97 @@ if opts.eos_file is None:
     import sys
     sys.exit(0)
 
+#same as in plot_eos_inference.py
+posterior_header = None
+#NOTE: ONLY THESE EOS_PARAMS HANDLED CURRENTLY: spectral, cs_spectral, PP
+def generate_eos(eos_line, eos_headers, eos_param="spectral",save_header=True,verbose=False):
+    if verbose: print("Creating EOS object of type",eos_param,"using given data line.")
+    
+    global posterior_header
+    if eos_headers == posterior_header:
+        eos_names = posterior_header
+        if verbose: print("Relabeling EOS using existing headers:",eos_names) 
+    else:
+        eos_names = eos_headers
+        if ((eos_param == "spectral" or eos_param == "cs_spectral") and eos_names[0] != "gamma1") or (eos_param=="PP" and eos_names[1] != "gamma1"):
+            print("WARNING: Unsupported gamma labels in EOS names found:",eos_names,"will relabel.")
+            counter = 0
+            indx= 0
+            while counter < 4 and indx < len(eos_headers):#max 4 gamma cols, or stop at end of list
+                if eos_headers[indx][0] == 'g' and eos_headers[indx][-1] == str(counter):#ensure gamma col
+                    counter += 1
+                    eos_names[indx] = "gamma"+str(counter)
+                indx+=1
+            print("Relabeled EOS headers:",eos_names)  
+        if save_header:
+            posterior_header = eos_names
+            
+    spec_param_array = eos_line 
+    spec_params ={}
+
+    for i in range(len(eos_names)):
+        spec_params[eos_names[i]]=spec_param_array[i]
+    if verbose: print("EOS data:\n",spec_params)
+    
+    eos_name="default_eos_name"
+    eos_base = None
+    try:
+        if eos_param == 'spectral':
+            #expect cols: gamma1, gamma2, gamma3, gamma4 (or fewer; must be at least 2 cols)
+            eos_base = EOSManager.EOSLindblomSpectral(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
+        elif eos_param == 'cs_spectral' and len(spec_param_array) >=4:
+            #expect cols: gamma1, gamma2, gamma3, gamma4
+            eos_base = EOSManager.EOSLindblomSpectralSoundSpeedVersusPressure(name=eos_name,spec_params=spec_params,use_lal_spec_eos=True)
+        elif eos_param == 'PP' and len(spec_param_array) >=4:
+            #expect cols: logP1, gamma1, gamma2, gamma3
+            eos_base = EOSManager.EOSPiecewisePolytrope(name=eos_name,params_dict=spec_params)
+        else:
+            raise Exception("Unknown method for parametric EOS data file {} : {} ".format(eos_name,eos_param))
+    except Exception as e:
+        if verbose:
+            print("=====\n FAILSTATE 3: EOS CREATION FAILED. Exception:\n     ",type(e),":",e,"\n EXITING.\n=====")
+        else:
+            print("=== EOS Creation Failed:",e,"===")
+        eos_base = None
+    
+    return eos_base
+
+
+#same as in plot_eos_inference.py
+def build_eos_sequence(lines,param_names):
+    #This gets 1+ lines of data; it will also get the names for each column, after header:
+    #dat = np.genfromtxt(filename,names=True)[lines]
+    #param_names = dat.dtype.names #separate out the names from the data
+    #all_params = dat.view((float, len(param_names)))
+    
+    #load eos data directly from file, make EOSs via EOSManager
+    eos_names = []
+    eos_dat = np.zeros((len(lines),len(param_names[2:])))
+    pop_params_lib = ['m1','m2','sig'] #can be added to for other populations
+    j= 0
+    for i in param_names[2:]: #should be anything past lnL, sig_lnL
+        if i in pop_params_lib:
+            continue
+        else: #anything that isn't m1, m2, sig
+            eos_names.append(i)
+            eos_dat[:,j] = lines[:,param_names.index(i)]
+            j+=1
+    
+    if len(eos_names) > 0:
+        eos_list = []
+        for i in np.arange(len(eos_dat)):
+            new_eos = generate_eos(eos_dat[i], eos_names)
+            if new_eos is None:
+                print("  eos line",i,"failed to generate.")
+            else:
+                eos_list.append(new_eos.eos)
+        return eos_list
+    else:
+        print("ERROR: No EOS columns found. Unable to create EOS object.")
+        return None
+
+
+#----------------------------------------------
 dat = np.genfromtxt(opts.eos_file,names=True)
 param_names = list(dat.dtype.names)
 all_dat = dat.view((float, len(param_names)))
@@ -106,23 +197,26 @@ else: #basically: opts.plot_pd or opts.eos_file
     #get EOS lines from grid file
     indx = 0
     while (len(oob_lines_list) < opts.points_oob) or (len(in_lines_list) < opts.points_in):
-        line = dat[indx]
+        line = all_dat[indx]
         oob_checks = 0
         in_checks = 0
-        for p in my_bounds.keys():
+        for p in my_bounds.keys()[:2]:
             if p in param_names:
                 col = param_names.index(p)
                 if line[col] < my_bounds[p][0] or line[col] > my_bounds[p][1]:
                     oob_checks += 1
                 else:
                     in_checks += 1
-        if oob_checks == len(my_bounds.keys()):
+        if oob_checks == len(my_bounds.keys()[:2]):
             oob_lines_list.append(line)
             oob_indx.append(indx)
-        elif in_checks == len(my_bounds.keys()):
+        elif in_checks == len(my_bounds.keys()[:2]):
             in_lines_list.append(line)
             in_indx.append(indx)
-        indx += 1
+        if indx == len(dat) - 1:
+            break
+        else:
+            indx += 1
 
 #oob_indx = oob_indx[:opts.points_oob] 
 #in_indx = in_indx[:opts.points_in]   
@@ -131,7 +225,7 @@ print("in indices (length",len(in_indx),"total):\n",in_indx[:opts.points_in])
 
 
 #directly render all eos in provided range using their own axes
-if not opts.no_plots: 
+if not opts.no_plot: 
     try:
         print("Importing matplotlib...")
         import matplotlib #super slow import
@@ -156,16 +250,15 @@ if not opts.no_plots:
     matplotlib.rcParams['lines.linewidth'] = 2.0
     matplotlib.rcParams['legend.loc'] = 'lower right'
     
-    import plot_eos_inference as pei
     xvar = opts.xvar_single
     yvar = opts.yvar_single
-    oob_eos_list = pei.build_eos_sequence(opts.eos_file,oob_lines_list)
+    oob_eos_list = build_eos_sequence(all_dat[oob_lines_list],param_names)
     if oob_eos_list is None:
         print("All provided EOS parameters failed; exiting.")
         sys.exit(0)
     print("EOS list initialized; total:",len(oob_eos_list))
     
-    in_eos_list = pei.build_eos_sequence(opts.eos_file,in_lines_list)
+    in_eos_list = build_eos_sequence(all_dat[in_lines_list],param_names)
     if in_eos_list is None:
         print("All provided EOS parameters failed; exiting.")
         sys.exit(0)
