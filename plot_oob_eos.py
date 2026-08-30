@@ -148,8 +148,8 @@ else:
         strbounds = plist[1].replace("[","").replace("]","").split(",")
         my_bounds[plist[0]] = [float(strbounds[0]),float(strbounds[1])]
 
-oob_lines_list = []
-in_lines_list = []
+#oob_lines_list = []
+#in_lines_list = []
 oob_indx = []
 in_indx = []
 
@@ -192,28 +192,72 @@ elif opts.plot_mr:
                 #delete lines_to_use_list[i]?
 else: #basically: opts.plot_pd or opts.eos_file
     #get EOS lines from grid file
-    indx = 0
-    while (len(oob_lines_list) < opts.points_oob) or (len(in_lines_list) < opts.points_in):
-        line = all_dat[indx]
-        oob_checks = 0
-        in_checks = 0
-        for p in list(my_bounds.keys()):#[:2]:
-            if p in param_names:
-                col = param_names.index(p)
-                if line[col] < my_bounds[p][0] or line[col] > my_bounds[p][1]:
-                    oob_checks += 1
-                else:
-                    in_checks += 1
-        if oob_checks == 4:#len(my_bounds.keys()[:2]):
-            oob_lines_list.append(line)
-            oob_indx.append(indx)
-        elif in_checks == 4:#len(my_bounds.keys()[:2]):
-            in_lines_list.append(line)
-            in_indx.append(indx)
-        if indx == len(dat) - 1:
-            break
-        else:
-            indx += 1
+# =============================================================================
+#     indx = 0
+#     while (len(oob_lines_list) < opts.points_oob) or (len(in_lines_list) < opts.points_in):
+#         line = all_dat[indx]
+#         oob_checks = 0
+#         in_checks = 0
+#         for p in list(my_bounds.keys()):#[:2]:
+#             if p in param_names:
+#                 col = param_names.index(p)
+#                 if line[col] < my_bounds[p][0] or line[col] > my_bounds[p][1]:
+#                     oob_checks += 1
+#                 else:
+#                     in_checks += 1
+#         if oob_checks == 4:#len(my_bounds.keys()[:2]):
+#             oob_lines_list.append(line)
+#             oob_indx.append(indx)
+#         elif in_checks == 4:#len(my_bounds.keys()[:2]):
+#             in_lines_list.append(line)
+#             in_indx.append(indx)
+#         if indx == len(dat) - 1:
+#             break
+#         else:
+#             indx += 1
+# =============================================================================
+    
+    in_bounds_indx = np.ones(len(all_dat), dtype=bool)
+    for p, bounds in my_bounds.items():
+        if p not in param_names:
+            raise ValueError("Required EOS parameter {} is absent from {}".format(p, opts.eos_file))
+        col = param_names.index(p)
+        in_bounds_indx &= (all_dat[:, col] >= bounds[0]) & (all_dat[:, col] <= bounds[1])
+
+    in_lines_list = np.flatnonzero(in_bounds_indx)
+    print("in lines:",len(in_lines_list),"/",len(in_bounds_indx))
+    
+    #literally: all lines NOT completely in-bounds (so at least 1 oob)
+    out_bounds_indx = ~in_bounds_indx
+    #oob_lines_list = np.flatnonzero(out_bounds_indx)
+    oob_dat = all_dat[np.flatnonzero(out_bounds_indx)]
+    out_bounds_indx = np.ones(len(oob_dat), dtype=bool)
+    print("Out bounds data len:",len(oob_dat),len(out_bounds_indx))
+    
+    for p in list(my_bounds.keys())[:2]: #just gamma0 & gamma1
+        if p not in param_names:
+            raise ValueError("Required EOS parameter {} is absent from {}".format(p, opts.eos_file))
+        col = param_names.index(p)
+        out_bounds_indx &= (oob_dat[:, col] < my_bounds[p][0]) or (oob_dat[:, col] > my_bounds[p][1])
+    
+    oob_lines_list = np.flatnonzero(out_bounds_indx)
+    
+    if opts.points_in > len(in_lines_list) or opts.points_oob > len(oob_lines_list):
+        raise ValueError("Requested control/comparison counts ({}/{}) exceed pool sizes ({}/{})".format(
+            opts.points_in, opts.points_oobs, len(in_lines_list), len(oob_lines_list)))
+    
+    #pick random lines to make EOS objects for
+    in_num = len(in_lines_list)
+    if int(opts.points_in*2) <= len(in_lines_list):
+        in_num = int(opts.points_in*2) #arbitrary buffer; should be enough to cover failed EOSs
+    oob_num = len(oob_lines_list)
+    if int(opts.points_oob*2) <= len(oob_lines_list):
+        oob_num = int(opts.points_oob*2)
+    
+    rng = np.random.default_rng(opts.seed)
+    in_indx = rng.choice(in_lines_list, size=in_num, replace=False).astype(int)
+    oob_indx = rng.choice(oob_lines_list, size=oob_num, replace=False).astype(int)
+
 
 #oob_indx = oob_indx[:opts.points_oob] 
 #in_indx = in_indx[:opts.points_in]   
@@ -269,13 +313,15 @@ if not opts.no_plot:
             in_opts['color'] = opts.eos_color[1]
     
     for indx, e in enumerate(in_eos_list[:opts.points_in]):
+        plot_opts = dict(in_opts) #reset dict each time
         if indx == 0:
-            in_opts['label'] = 'Inside bounds'
-        eosplot.render_eos(e,xvar, yvar,npts=500,**in_opts) #'rest_mass_density', 'pressure'
+            plot_opts['label'] = 'Inside bounds'
+        eosplot.render_eos(e,xvar, yvar,npts=500,**plot_opts) #'rest_mass_density', 'pressure'
     for indx, e in enumerate(oob_eos_list[:opts.points_oob]):
+        plot_opts = dict(oob_opts) #reset dict each time
         if indx == 0:
-            oob_opts['label'] = 'Outside bounds'
-        eosplot.render_eos(e,xvar, yvar,npts=500,**oob_opts) #'rest_mass_density', 'pressure'
+            plot_opts['label'] = 'Outside bounds'
+        eosplot.render_eos(e,xvar, yvar,npts=500,**plot_opts) #'rest_mass_density', 'pressure'
     plt.xlim(10.0**14,10.0**18)
     plt.ylim(bottom=10.0**32)
     print("All EOS rendered.")
