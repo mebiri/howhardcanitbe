@@ -14,6 +14,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--eos-file',type=str,help='REQUIRED, even if loading pyr dat! ')
 parser.add_argument('--points-in', default=1,type=int,help="Number of completely in-bounds EOS lines of posterior to pick/plot")
 parser.add_argument('--points-oob',default=1,type=int,help="Number of completely out-of-bounds EOS lines in posterior to pick/plot")
+parser.add_argument('--seed',default=20260823,type=int,help="Seed for reproducible unbiased sampling without replacement")
 parser.add_argument('--no-plot',action='store_true',help="Do not plot EOS curves, just report EOS lines selected")
 parser.add_argument('--param-bounds',action='append',default=None,type=str,help="format: param:[min,max] for each param (will match to EOS). If none provided, defaults to Carney 2018 gamma bounds")
 
@@ -151,10 +152,6 @@ oob_lines_list = []
 in_lines_list = []
 oob_indx = []
 in_indx = []
-files_list_pd = []
-files_list_mr = []
-plot_opts_list = []
-fill_opts_list = []
 
 if opts.plot_mr and (opts.load_pyr_obj_dir is None):
     print("ERROR: no supplied paths to MR data for requested MR plot. Will not generate!")
@@ -200,17 +197,17 @@ else: #basically: opts.plot_pd or opts.eos_file
         line = all_dat[indx]
         oob_checks = 0
         in_checks = 0
-        for p in list(my_bounds.keys())[:2]:
+        for p in list(my_bounds.keys()):#[:2]:
             if p in param_names:
                 col = param_names.index(p)
                 if line[col] < my_bounds[p][0] or line[col] > my_bounds[p][1]:
                     oob_checks += 1
                 else:
                     in_checks += 1
-        if oob_checks == 2:#len(my_bounds.keys()[:2]):
+        if oob_checks == 4:#len(my_bounds.keys()[:2]):
             oob_lines_list.append(line)
             oob_indx.append(indx)
-        elif in_checks == 2:#len(my_bounds.keys()[:2]):
+        elif in_checks == 4:#len(my_bounds.keys()[:2]):
             in_lines_list.append(line)
             in_indx.append(indx)
         if indx == len(dat) - 1:
@@ -264,29 +261,33 @@ if not opts.no_plot:
         sys.exit(0)
     print("EOS list initialized; total:",len(in_eos_list))
     
-    oob_opts = {}
-    in_opts = {}
+    oob_opts = {'color': 'tab:purple'}
+    in_opts = {'color': 'tab:blue'}
     if opts.eos_color:
         oob_opts['color'] = opts.eos_color[0]
         if len(opts.eos_color) > 1:
             in_opts['color'] = opts.eos_color[1]
     
-    for e in in_eos_list[:opts.points_in]:
+    for indx, e in enumerate(in_eos_list[:opts.points_in]):
+        if indx == 0:
+            in_opts['label'] = 'Inside bounds'
         eosplot.render_eos(e,xvar, yvar,npts=500,**in_opts) #'rest_mass_density', 'pressure'
-    for e in oob_eos_list[:opts.points_oob]:
+    for indx, e in enumerate(oob_eos_list[:opts.points_oob]):
+        if indx == 0:
+            oob_opts['label'] = 'Outside bounds'
         eosplot.render_eos(e,xvar, yvar,npts=500,**oob_opts) #'rest_mass_density', 'pressure'
     plt.xlim(10.0**14,10.0**18)
     plt.ylim(bottom=10.0**32)
     print("All EOS rendered.")
     
     if xvar == 'rest_mass_density':
-        xlab = r"\rho$ [g cm$^{-3}$]" #log$_{10}\, 
+        xlab = r"$\rho$ [g cm$^{-3}$]" #log$_{10}\, 
     elif xvar == 'pressure':
         xlab = r"log$_{10}\,\, p$"
     else:
         xlab = xvar
     if yvar == 'pressure':
-        ylab = r"P$ [dyn cm$^{-2}$]" #log$_{10}\, 
+        ylab = r"$P$ [dyn cm$^{-2}$]" #log$_{10}\, 
     elif yvar == 'energy_density':
         ylab = r"log$_{10}\,\, \epsilon$"
     else:
