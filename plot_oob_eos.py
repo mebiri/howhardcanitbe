@@ -228,14 +228,14 @@ else: #basically: opts.plot_pd or opts.eos_file
     print("in lines:",len(in_lines_list),"/",len(in_bounds_indx))
     
     #literally: all lines NOT completely in-bounds (so at least 1 oob)
-    out_bounds_indx = ~in_bounds_indx
+    #out_bounds_indx = ~in_bounds_indx
     #oob_lines_list = np.flatnonzero(out_bounds_indx)
-    oob_dat = all_dat[np.flatnonzero(out_bounds_indx)]
+    #oob_dat = all_dat[np.flatnonzero(out_bounds_indx)]
     #out_bounds_indx = np.ones(len(all_dat), dtype=bool)
-    print("Out bounds data len:",len(oob_dat),len(out_bounds_indx))
+    #print("Out bounds data len:",len(oob_dat),len(out_bounds_indx))
     
     oob_lines_list = []
-    for indx, line in enumerate(oob_dat):
+    for indx, line in enumerate(all_dat):
         oob_checks = 0
         for p in list(my_bounds.keys())[:2]:
             if p not in param_names:
@@ -276,7 +276,9 @@ else: #basically: opts.plot_pd or opts.eos_file
 #oob_indx = oob_indx[:opts.points_oob] 
 #in_indx = in_indx[:opts.points_in]   
 print("OOB indices (length",len(oob_indx),"total):\n",oob_indx[:opts.points_oob])
+print("\n".join(all_dat[oob_indx[:opts.points_oob]]))
 print("in indices (length",len(in_indx),"total):\n",in_indx[:opts.points_in])
+print("\n".join(all_dat[in_indx[:opts.points_in]]))
 
 
 #directly render all eos in provided range using their own axes
