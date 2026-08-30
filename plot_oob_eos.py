@@ -17,6 +17,7 @@ parser.add_argument('--points-oob',default=1,type=int,help="Number of completely
 parser.add_argument('--seed',default=20260823,type=int,help="Seed for reproducible unbiased sampling without replacement")
 parser.add_argument('--no-plot',action='store_true',help="Do not plot EOS curves, just report EOS lines selected")
 parser.add_argument('--param-bounds',action='append',default=None,type=str,help="format: param:[min,max] for each param (will match to EOS). If none provided, defaults to Carney 2018 gamma bounds")
+parser.add_argument('--num-bounds-to-respect',default=2,type=int,help="Number of parameter bounds [1-4] to test for out-of-bounds points.")
 
 parser.add_argument('--load-pyr-obj-dir',action='append',type=str,default=None,help="Dir(s)/basename(s) containing pyr objects to load for MR plot (create using NICER code with --save-pyr in Hyperpipe)")
 #flags
@@ -217,6 +218,7 @@ else: #basically: opts.plot_pd or opts.eos_file
 #             indx += 1
 # =============================================================================
     
+    #completely in-bounds points
     in_bounds_indx = np.ones(len(all_dat), dtype=bool)
     for p, bounds in my_bounds.items():
         if p not in param_names:
@@ -234,18 +236,25 @@ else: #basically: opts.plot_pd or opts.eos_file
     #out_bounds_indx = np.ones(len(all_dat), dtype=bool)
     #print("Out bounds data len:",len(oob_dat),len(out_bounds_indx))
     
+    #out-of-bounds points, relative to specified number of bounds
+    if opts.num_bounds_to_respect < 1:
+        opts.num_bounds_to_respect = 1
+    elif opts.num_bounds_to_respect > 4:
+        opts.num_bounds_to_respect = 4
+    print("Checking",opts.num_bounds_to_respect,"bounds for out-of-bounds points.")
     oob_lines_list = []
     for indx, line in enumerate(all_dat):
         oob_checks = 0
-        for p in list(my_bounds.keys())[:2]:
+        for p in list(my_bounds.keys())[:opts.num_bounds_to_respect-1]:
             if p not in param_names:
                 raise ValueError("Required EOS parameter {} is absent from {}".format(p, opts.eos_file))
             col = param_names.index(p)
             if line[col] < my_bounds[p][0] or line[col] > my_bounds[p][1]:
                 oob_checks += 1
-        if oob_checks == 2:#len(my_bounds.keys()[:2]):
+        if oob_checks == opts.num_bounds_to_respect:#len(my_bounds.keys()[:2]):
             oob_lines_list.append(indx)
-            
+    
+    print("Total OOB points detected:",len(oob_lines_list))
     #for p, bounds in my_bounds.items(): #just gamma0 & gamma1
     #    if p not in param_names:
     #        raise ValueError("Required EOS parameter {} is absent from {}".format(p, opts.eos_file))
@@ -276,7 +285,7 @@ else: #basically: opts.plot_pd or opts.eos_file
 #oob_indx = oob_indx[:opts.points_oob] 
 #in_indx = in_indx[:opts.points_in]   
 print("OOB indices (length",len(oob_indx),"total):\n",oob_indx[:opts.points_oob])
-print("\n".join(all_dat[oob_indx[:opts.points_oob]]))
+print(all_dat[oob_indx[:opts.points_oob]])
 print("in indices (length",len(in_indx),"total):\n",in_indx[:opts.points_in])
 print("\n".join(all_dat[in_indx[:opts.points_in]]))
 
@@ -331,12 +340,16 @@ if not opts.no_plot:
     for indx, e in enumerate(in_eos_list[:opts.points_in]):
         plot_opts = dict(in_opts) #reset dict each time
         if indx == 0:
-            plot_opts['label'] = 'Inside bounds'
+            plot_opts['label'] = 'Inside all bounds'
         eosplot.render_eos(e,xvar, yvar,npts=500,**plot_opts) #'rest_mass_density', 'pressure'
     for indx, e in enumerate(oob_eos_list[:opts.points_oob]):
         plot_opts = dict(oob_opts) #reset dict each time
         if indx == 0:
-            plot_opts['label'] = 'Outside bounds'
+            plot_opts['label'] = r'Outside bounds $\gamma_0 < 0.2$'
+            if opts.num_bounds_to_respect == 2:
+                plot_opts['label'] += ', $\gamma_1 > 1.7$'
+            elif opts.num_bounds_to_respect >= 3:
+                plot_opts['label'] = 'Outside '+str(opts.num_bounds_to_respect)+' bounds'
         eosplot.render_eos(e,xvar, yvar,npts=500,**plot_opts) #'rest_mass_density', 'pressure'
     plt.xlim(10.0**14,10.0**18)
     plt.ylim(bottom=10.0**32)
@@ -356,9 +369,10 @@ if not opts.no_plot:
         ylab = yvar
     plt.xlabel(xlab) #"\rho$ [g cm$^{-3}$]")
     plt.ylabel(ylab) #"P$ [dyn cm$^{-2}$]")
+    plt.legend()
     dpi_base=200
     res_base = 4*dpi_base
-    plt.savefig("EOS_OOB_plot_"+yvar+"_vs_"+xvar+fig_extension,dpi=res_base)
+    plt.savefig("EOS_OOB_plot_"+yvar+"_vs_"+xvar+"_"+str(opts.num_bounds_to_respect)+"b"+fig_extension,dpi=res_base)
     print("EOS figure saved.")
 
 
