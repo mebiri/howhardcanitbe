@@ -228,18 +228,20 @@ else: #basically: opts.plot_pd or opts.eos_file
     print("in lines:",len(in_lines_list),"/",len(in_bounds_indx))
     
     #literally: all lines NOT completely in-bounds (so at least 1 oob)
-    out_bounds_indx = ~in_bounds_indx
+    #out_bounds_indx = ~in_bounds_indx
     #oob_lines_list = np.flatnonzero(out_bounds_indx)
-    oob_dat = all_dat[np.flatnonzero(out_bounds_indx)]
-    out_bounds_indx = np.ones(len(oob_dat), dtype=bool)
-    print("Out bounds data len:",len(oob_dat),len(out_bounds_indx))
+    #oob_dat = all_dat[np.flatnonzero(out_bounds_indx)]
+    out_bounds_indx = np.ones(len(all_dat), dtype=bool)
+    #print("Out bounds data len:",len(oob_dat),len(out_bounds_indx))
     
-    for p in list(my_bounds.keys())[:2]: #just gamma0 & gamma1
+    for p, bounds in my_bounds.items(): #just gamma0 & gamma1
         if p not in param_names:
             raise ValueError("Required EOS parameter {} is absent from {}".format(p, opts.eos_file))
-        col = param_names.index(p)
-        out_bounds_indx &= (oob_dat[:, col] < my_bounds[p][0]) or (oob_dat[:, col] > my_bounds[p][1])
-    
+        elif p == 'gamma0' or p == 'gamma1':
+            col = param_names.index(p)
+            out_bounds_indx &= ((all_dat[:, col] < bounds[0]) or (all_dat[:, col] > bounds[1]))
+        else:
+            continue
     oob_lines_list = np.flatnonzero(out_bounds_indx)
     
     if opts.points_in > len(in_lines_list) or opts.points_oob > len(oob_lines_list):
