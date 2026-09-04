@@ -176,8 +176,11 @@ rs[:,3] = np.random.uniform(r_bounds[3,0], r_bounds[3,1],npts)
 
 coord_names = ["gamma0","gamma1","gamma2","gamma3"]
 low_level_coord_names = coord_names
-import dan_rotation_conversion as dan
-r_gammas = dan.inverse_dan_rotation(rs, coord_names, low_level_coord_names)
+if not opts.use_cart_bounds:
+    import dan_rotation_conversion as dan
+    r_gammas = dan.inverse_dan_rotation(rs, coord_names, low_level_coord_names)
+else:
+    r_gammas = rs
 
 fname = opts.using_eos
 dat = np.genfromtxt(fname,names=True)
