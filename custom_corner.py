@@ -20,6 +20,7 @@ parser.add_argument('--use-all-composite-but-grayscale',action='store_true',help
 parser.add_argument('--match-hypercube',action='store_true',help="Fix axis bounds around hypercube")
 parser.add_argument('--cube-color',type=str,default="tab:blue",help="Color for hypercube points")
 parser.add_argument('--custom-bound',type=str,action='append',help="Custom bounds for plots; supply empty str for unmodded param (will match hypercube)")
+parser.add_argument('--use-cart-bounds',action='store_true',help="Use old Cartesian bounds from Carney et al (2018) for hypercube")
 
 opts = parser.parse_args()
 
@@ -27,12 +28,12 @@ opts = parser.parse_args()
 #opts.lnL_cut= 15
 #opts.use_all_composite_but_grayscale = True
 
-def get_puff_bounds(use_alt_buffer=False, buffer=0.1,ret=False):
+def get_puff_bounds(use_alt_buffer=False, buffer=0.1,ret=False,use_Cart=False):
     rot_coords = {}
-    rot_coords["r0"] = [-4.37722, 4.91227]
-    rot_coords["r1"] = [-1.82240, 2.06387]
-    rot_coords["r2"] = [-0.32445, 0.36469]
-    rot_coords["r3"] = [-0.09529, 0.11426]
+    rot_coords["r0"] = [-4.37722, 4.91227] if not use_Cart else [0.2,2.0]
+    rot_coords["r1"] = [-1.82240, 2.06387] if not use_Cart else [-1.6,1.7]
+    rot_coords["r2"] = [-0.32445, 0.36469] if not use_Cart else [-0.6,0.6]
+    rot_coords["r3"] = [-0.09529, 0.11426] if not use_Cart else [-0.02,0.02]
     
     new_bounds = []
     for indx, param in enumerate(rot_coords.keys()):
@@ -68,8 +69,8 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     if opts.custom_bound:
         for i, r in enumerate(opts.custom_bound):
             if r != "":
-                gmin[i] = r.replace("[","").replace("]","").split(",")[0]
-                gmax[i] = r.replace("[","").replace("]","").split(",")[1]
+                gmin[i] = np.float64(r.replace("[","").replace("]","").split(",")[0])
+                gmax[i] = np.float64(r.replace("[","").replace("]","").split(",")[1])
     
     ax1 = fig1.add_subplot(331)
     ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color=sc)
@@ -151,6 +152,10 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     if opts.use_all_composite_but_grayscale:
         save_name+="_allcomp"
     if opts.match_hypercube:
+        save_name+="_matchcube"
+    if opts.use_cart_bounds:
+        save_name+="_Cartesian"
+    if opts.custom_bound:
         save_name+="_bounded"
     fig1.savefig(save_name+".png",dpi=250)
     plt.show()
@@ -161,7 +166,7 @@ npts = opts.npts_cube
 do_alt_buff = False
 if opts.use_alt_buffer:
     do_alt_buff = True
-r_bounds = np.array(get_puff_bounds(use_alt_buffer=do_alt_buff, buffer=opts.buffer,ret=True))
+r_bounds = np.array(get_puff_bounds(use_alt_buffer=do_alt_buff, buffer=opts.buffer,ret=True,use_Cart=opts.use_cart_bounds))
 
 rs = np.zeros((npts,4))
 rs[:,0] = np.random.uniform(r_bounds[0,0], r_bounds[0,1],npts)
@@ -208,7 +213,11 @@ g_dat = g_dat[indx_sorted]   # Sort by lnL
 
 print("size of selected data:",len(all_dat),all_dat.shape)
 print("length of likelihood data:",len(lnL))
-
+for i in np.arange(len(g_dat[0])):
+    print(" coord range {} : [{}, {}]".format(coord_names[i],min(g_dat[:,i]),max(g_dat[:,i])))
+if opts.match_hypercube or opts.custom_bound:
+    print(" Will override bounds")
+    
 if opts.use_all_composite_but_grayscale:
     build_plot(r_gammas, g_dat, lnL, grey_dat=g_dat_orig)
 else:
