@@ -245,7 +245,7 @@ else: #basically: opts.plot_pd or opts.eos_file
     oob_lines_list = []
     for indx, line in enumerate(all_dat):
         oob_checks = 0
-        for p in list(my_bounds.keys())[:opts.num_bounds_to_respect-1]:
+        for p in list(my_bounds.keys())[:opts.num_bounds_to_respect]:
             if p not in param_names:
                 raise ValueError("Required EOS parameter {} is absent from {}".format(p, opts.eos_file))
             col = param_names.index(p)
@@ -285,9 +285,9 @@ else: #basically: opts.plot_pd or opts.eos_file
 #oob_indx = oob_indx[:opts.points_oob] 
 #in_indx = in_indx[:opts.points_in]   
 print("OOB indices (length",len(oob_indx),"total):\n",oob_indx[:opts.points_oob])
-print(all_dat[oob_indx[:opts.points_oob]])
+print(all_dat[oob_indx[:opts.points_oob],2:6])
 print("in indices (length",len(in_indx),"total):\n",in_indx[:opts.points_in])
-print("\n".join(all_dat[in_indx[:opts.points_in]]))
+print(all_dat[in_indx[:opts.points_in],2:6])
 
 
 #directly render all eos in provided range using their own axes
@@ -340,12 +340,16 @@ if not opts.no_plot:
     for indx, e in enumerate(in_eos_list[:opts.points_in]):
         plot_opts = dict(in_opts) #reset dict each time
         if indx == 0:
-            plot_opts['label'] = 'Inside all bounds'
+            plot_opts['label'] = r'In original region: $\gamma_0 \ge 0.2$'
+            if opts.num_bounds_to_respect == 2:
+                plot_opts['label'] += ', $\gamma_1 \le 1.7$'
+            elif opts.num_bounds_to_respect >= 3:
+                plot_opts['label'] = 'Original bounds'
         eosplot.render_eos(e,xvar, yvar,npts=500,**plot_opts) #'rest_mass_density', 'pressure'
     for indx, e in enumerate(oob_eos_list[:opts.points_oob]):
         plot_opts = dict(oob_opts) #reset dict each time
         if indx == 0:
-            plot_opts['label'] = r'Outside bounds $\gamma_0 < 0.2$'
+            plot_opts['label'] = r'In new region: $\gamma_0 < 0.2$'
             if opts.num_bounds_to_respect == 2:
                 plot_opts['label'] += ', $\gamma_1 > 1.7$'
             elif opts.num_bounds_to_respect >= 3:
