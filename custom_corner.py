@@ -11,22 +11,21 @@ import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--using-eos', type=str,help="REQUIRED: Send eos file with [lnL, sigma_lnL, gamma0, gamma1, gamma2, gamma3, m1, m2, sig] as the parameters.")
+parser.add_argument('--composite', type=str,help="REQUIRED: Send eos file with [lnL, sigma_lnL, gamma0, gamma1, gamma2, gamma3, m1, m2, sig] as the parameters.")
 parser.add_argument('--buffer',type=float,default=0.1,help="buffer size (default 10%)")
 parser.add_argument('--npts-cube',type=int,default=2000,help="number of points to draw to fill hypercube")
-parser.add_argument('--lnL-cut',type=float,default=None,help="maybe curoff lnLs below certain val, to reduce points plotted")
+parser.add_argument('--lnL-cut',type=float,default=9,help="maybe curoff lnLs below certain val, to reduce points plotted")
 parser.add_argument('--use-alt-buffer',action='store_true',help="use symmetric buffer implementation (total buffer = 2x opts.buffer)")
 parser.add_argument('--use-all-composite-but-grayscale',action='store_true',help="plot all points in greyscale, color points on top")
 parser.add_argument('--match-hypercube',action='store_true',help="Fix axis bounds around hypercube")
 parser.add_argument('--cube-color',type=str,default="tab:blue",help="Color for hypercube points")
 parser.add_argument('--custom-bound',type=str,action='append',help="Custom bounds for plots; supply empty str for unmodded param (will match hypercube)")
 parser.add_argument('--use-cart-bounds',action='store_true',help="Use old Cartesian bounds from Carney et al (2018) for hypercube")
+parser.add_argument('--posterior', type=str,default=None,help="grid.dat file with [lnL, sigma_lnL, gamma0, gamma1, gamma2, gamma3, m1, m2, sig]. Can be used instead of --composite.")
+parser.add_argument('--post-color',type=str,default="k",help="color for posterior points (eventually hopefully contour)")
 
 opts = parser.parse_args()
 
-#opts.using_eos = "consolidated_0_0.txt"
-#opts.lnL_cut= 15
-#opts.use_all_composite_but_grayscale = True
 
 def get_puff_bounds(use_alt_buffer=False, buffer=0.1,ret=False,use_Cart=False):
     rot_coords = {}
@@ -51,12 +50,17 @@ def get_puff_bounds(use_alt_buffer=False, buffer=0.1,ret=False,use_Cart=False):
         return new_bounds
 
 
-def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):    
+def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):    
     fig1 = plt.figure(figsize=(8,7.5),dpi=250) 
     grey = False
     if grey_dat is not None:
         grey = True
     cm = 'rainbow_r'
+    if np.sum(lnL_list) == 0.0:
+        cm = None
+        c_list=opts.post_color
+    else:
+        c_list = lnL_list
     sc = opts.cube_color
     
     gmin = []
@@ -75,7 +79,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax1 = fig1.add_subplot(331)
     ax1.scatter(gammas[:,0],gammas[:,1],marker=".",color=sc)
     if grey: ax1.scatter(grey_dat[:,0],grey_dat[:,1],marker=".",s=1,color='0.5')
-    ax1.scatter(g_dat[:,0],g_dat[:,1],c=lnL_list,marker=".",s=1,cmap=cm)
+    ax1.scatter(g_dat[:,0],g_dat[:,1],c=c_list,marker=".",s=1,cmap=cm)
     if opts.match_hypercube or opts.custom_bound: 
         ax1.set_xlim(left=gmin[0],right=gmax[0])
         ax1.set_ylim(bottom=gmin[1],top=gmax[1])
@@ -87,7 +91,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax2 = fig1.add_subplot(335)
     ax2.scatter(gammas[:,1],gammas[:,2],marker=".",color=sc)
     if grey: ax2.scatter(grey_dat[:,1],grey_dat[:,2],marker=".",s=1,color='0.5')
-    ax2.scatter(g_dat[:,1],g_dat[:,2],c=lnL_list,marker=".",s=1,cmap=cm)
+    ax2.scatter(g_dat[:,1],g_dat[:,2],c=c_list,marker=".",s=1,cmap=cm)
     if opts.match_hypercube or opts.custom_bound: 
         ax2.set_xlim(left=gmin[1],right=gmax[1])
         ax2.set_ylim(bottom=gmin[2],top=gmax[2])
@@ -100,7 +104,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax3 = fig1.add_subplot(339)
     ax3.scatter(gammas[:,2],gammas[:,3],marker=".",color=sc)
     if grey: ax3.scatter(grey_dat[:,2],grey_dat[:,3],marker=".",s=1,color='0.5')
-    ax3.scatter(g_dat[:,2],g_dat[:,3],c=lnL_list,marker=".",s=1,cmap=cm)
+    ax3.scatter(g_dat[:,2],g_dat[:,3],c=c_list,marker=".",s=1,cmap=cm)
     if opts.match_hypercube or opts.custom_bound: 
         ax3.set_xlim(left=gmin[2],right=gmax[2])
         ax3.set_ylim(bottom=gmin[3],top=gmax[3])
@@ -112,7 +116,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax4 = fig1.add_subplot(334)
     ax4.scatter(gammas[:,0],gammas[:,2],marker=".",color=sc)
     if grey: ax4.scatter(grey_dat[:,0],grey_dat[:,2],marker=".",s=1,color='0.5')
-    ax4.scatter(g_dat[:,0],g_dat[:,2],c=lnL_list,marker=".",s=1,cmap=cm)
+    ax4.scatter(g_dat[:,0],g_dat[:,2],c=c_list,marker=".",s=1,cmap=cm)
     if opts.match_hypercube or opts.custom_bound: 
         ax4.set_xlim(left=gmin[0],right=gmax[0])
         ax4.set_ylim(bottom=gmin[2],top=gmax[2])
@@ -124,7 +128,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax5 = fig1.add_subplot(337)
     ax5.scatter(gammas[:,0],gammas[:,3],marker=".",color=sc)
     if grey: ax5.scatter(grey_dat[:,0],grey_dat[:,3],marker=".",s=1,color='0.5')
-    ax5.scatter(g_dat[:,0],g_dat[:,3],c=lnL_list,marker=".",s=1,cmap=cm)
+    ax5.scatter(g_dat[:,0],g_dat[:,3],c=c_list,marker=".",s=1,cmap=cm)
     if opts.match_hypercube or opts.custom_bound: 
         ax5.set_xlim(left=gmin[0],right=gmax[0])
         ax5.set_ylim(bottom=gmin[3],top=gmax[3])
@@ -135,7 +139,7 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     ax6 = fig1.add_subplot(338)
     ax6.scatter(gammas[:,1],gammas[:,3],marker=".",color=sc)
     if grey: ax6.scatter(grey_dat[:,1],grey_dat[:,3],marker=".",s=1,color='0.5')
-    ax6.scatter(g_dat[:,1],g_dat[:,3],c=lnL_list,marker=".",s=1,cmap=cm)
+    ax6.scatter(g_dat[:,1],g_dat[:,3],c=c_list,marker=".",s=1,cmap=cm)
     if opts.match_hypercube or opts.custom_bound: 
         ax6.set_xlim(left=gmin[1],right=gmax[1])
         ax6.set_ylim(bottom=gmin[3],top=gmax[3])
@@ -146,7 +150,9 @@ def build_plot(gammas,g_dat,lnL_list,colormap=None,grey_dat=None):
     
     fig1.tight_layout()
     fig1.subplots_adjust(hspace=0.05,wspace=0.05)
-    save_name = "custom_corner_"+opts.using_eos.split("/")[-1].split(".")[0]+"_b"+str(opts.buffer).replace(".","p")
+    save_name = "custom_corner_"+filename.split("/")[-1].split(".")[0]+"_b"+str(opts.buffer).replace(".","p")
+    if opts.posterior:
+        save_name+="_post"
     if opts.lnL_cut:
         save_name+="_Lcut"+str(opts.lnL_cut).split(".")[0]
     if opts.use_all_composite_but_grayscale:
@@ -182,7 +188,12 @@ if not opts.use_cart_bounds:
 else:
     r_gammas = rs
 
-fname = opts.using_eos
+post = False #whether data file is posterior (with lnL = 0)
+if opts.posterior:
+    fname = opts.posterior
+    post = True
+else:
+    fname = opts.composite
 dat = np.genfromtxt(fname,names=True)
 param_names = list(dat.dtype.names)
 all_dat = dat.view((float, len(param_names)))
@@ -192,27 +203,28 @@ g_indx = [param_names.index(k) for k in coord_names]
 g_dat_orig = all_dat[:,g_indx]
 maxlnL = max(all_dat[:,0])
 print("max lnL:",maxlnL)
-if opts.lnL_cut:
+if opts.lnL_cut and not post:
     indx_ok = np.ones(len(all_dat),dtype=bool)
     indx_ok = all_dat[:,0] > maxlnL - opts.lnL_cut
-    print(" Length of cut data:",np.sum(indx_ok))
+    print(" Length of truncated data:",np.sum(indx_ok))
     all_dat = all_dat[indx_ok]
 
 lnL = all_dat[:,0] 
 g_dat = all_dat[:,g_indx]
 
-#stolen from plot_posterior_corner.py:
-#cm = colormaps['rainbow_r']
-indx_sorted = lnL.argsort()
-y_span = lnL.max() - lnL.min()
-print(" Composite file : lnL span ", y_span)
-#y_min = lnL.min()
-#cm2 = lambda x: cm( (x - y_min)/y_span)
-#my_cmap_values = cm((lnL-y_min)/y_span)
- 
-# reverse order ... make sure largest plotted last
-g_dat = g_dat[indx_sorted]   # Sort by lnL
-#my_cmap_values = my_cmap_values[indx_sorted]
+if not post:
+    #stolen from plot_posterior_corner.py:
+    #cm = colormaps['rainbow_r']
+    indx_sorted = lnL.argsort()
+    y_span = lnL.max() - lnL.min()
+    print(" Composite file : lnL span ", y_span)
+    #y_min = lnL.min()
+    #cm2 = lambda x: cm( (x - y_min)/y_span)
+    #my_cmap_values = cm((lnL-y_min)/y_span)
+     
+    # reverse order ... make sure largest plotted last
+    g_dat = g_dat[indx_sorted]   # Sort by lnL
+    #my_cmap_values = my_cmap_values[indx_sorted]
 
 print("size of selected data:",len(all_dat),all_dat.shape)
 print("length of likelihood data:",len(lnL))
@@ -221,9 +233,9 @@ for i in np.arange(len(g_dat[0])):
 if opts.match_hypercube or opts.custom_bound:
     print(" Will override bounds")
     
-if opts.use_all_composite_but_grayscale:
-    build_plot(r_gammas, g_dat, lnL, grey_dat=g_dat_orig)
+if opts.use_all_composite_but_grayscale and not post:
+    build_plot(r_gammas, g_dat, lnL, fname, grey_dat=g_dat_orig)
 else:
-    build_plot(r_gammas, g_dat, lnL)
+    build_plot(r_gammas, g_dat, lnL, fname)
 
 
