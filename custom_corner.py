@@ -67,10 +67,12 @@ def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):
     cm = 'rainbow_r' #colormap for composite
     post = False #posterior flag
     comp = False #composite flag
+    pstart = 0
     if lnL_list is None: #no composite, expect posterior
         post = True
     else:
         comp = True
+        pstart = 1
         if len(g_dat) > 1:
             post = True
             
@@ -106,7 +108,7 @@ def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):
     #ax1.scatter(g_dat[:,0],g_dat[:,1],c=c_list,marker=".",s=1,cmap=cm) #replace w/ below once contours work
     if comp: ax1.scatter(g_dat[0][:,0],g_dat[0][:,1],c=lnL_list,marker=".",s=1,cmap=cm)
     if post: 
-        for i,p in enumerate(g_dat[1:]):
+        for i,p in enumerate(g_dat[pstart:]):
             ax1.scatter(p[:,0],p[:,1],c=pc_list[i],marker=".",s=1,label=leg_list[i])
         #ax1.contour(g_dat[:,0],g_dat[:,1],np.ones((len(g_dat),len(g_dat))),levels=[1]) #TODO: doesn't work!
     if opts.match_hypercube or opts.custom_bound: 
@@ -122,8 +124,8 @@ def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):
     if grey: ax2.scatter(grey_dat[:,1],grey_dat[:,2],marker=".",s=1,color='0.5')
     if comp: ax2.scatter(g_dat[0][:,1],g_dat[0][:,2],c=lnL_list,marker=".",s=1,cmap=cm)
     if post: 
-        for i,p in enumerate(g_dat[1:]):
-            ax2.scatter(p[:,0],p[:,2],c=pc_list[i],marker=".",s=1,label=leg_list[i])
+        for i,p in enumerate(g_dat[pstart:]):
+            ax2.scatter(p[:,0],p[:,2],c=pc_list[i],marker=".",s=1)
     if opts.match_hypercube or opts.custom_bound: 
         ax2.set_xlim(left=gmin[1],right=gmax[1])
         ax2.set_ylim(bottom=gmin[2],top=gmax[2])
@@ -137,6 +139,9 @@ def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):
     ax3.scatter(gammas[:,2],gammas[:,3],marker=".",color=sc)
     if grey: ax3.scatter(grey_dat[:,2],grey_dat[:,3],marker=".",s=1,color='0.5')
     if comp: ax3.scatter(g_dat[0][:,2],g_dat[0][:,3],c=lnL_list,marker=".",s=1,cmap=cm)
+    if post: 
+        for i,p in enumerate(g_dat[pstart:]):
+            ax3.scatter(p[:,2],p[:,3],c=pc_list[i],marker=".",s=1)
     if opts.match_hypercube or opts.custom_bound: 
         ax3.set_xlim(left=gmin[2],right=gmax[2])
         ax3.set_ylim(bottom=gmin[3],top=gmax[3])
@@ -149,6 +154,9 @@ def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):
     ax4.scatter(gammas[:,0],gammas[:,2],marker=".",color=sc)
     if grey: ax4.scatter(grey_dat[:,0],grey_dat[:,2],marker=".",s=1,color='0.5')
     if comp: ax4.scatter(g_dat[0][:,0],g_dat[0][:,2],c=lnL_list,marker=".",s=1,cmap=cm)
+    if post: 
+        for i,p in enumerate(g_dat[pstart:]):
+            ax4.scatter(p[:,0],p[:,2],c=pc_list[i],marker=".",s=1)
     if opts.match_hypercube or opts.custom_bound: 
         ax4.set_xlim(left=gmin[0],right=gmax[0])
         ax4.set_ylim(bottom=gmin[2],top=gmax[2])
@@ -161,6 +169,9 @@ def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):
     ax5.scatter(gammas[:,0],gammas[:,3],marker=".",color=sc)
     if grey: ax5.scatter(grey_dat[:,0],grey_dat[:,3],marker=".",s=1,color='0.5')
     if comp: ax5.scatter(g_dat[0][:,0],g_dat[0][:,3],c=lnL_list,marker=".",s=1,cmap=cm)
+    if post: 
+        for i,p in enumerate(g_dat[pstart:]):
+            ax5.scatter(p[:,0],p[:,3],c=pc_list[i],marker=".",s=1)
     if opts.match_hypercube or opts.custom_bound: 
         ax5.set_xlim(left=gmin[0],right=gmax[0])
         ax5.set_ylim(bottom=gmin[3],top=gmax[3])
@@ -172,6 +183,9 @@ def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):
     ax6.scatter(gammas[:,1],gammas[:,3],marker=".",color=sc)
     if grey: ax6.scatter(grey_dat[:,1],grey_dat[:,3],marker=".",s=1,color='0.5')
     if comp: ax6.scatter(g_dat[0][:,1],g_dat[0][:,3],c=lnL_list,marker=".",s=1,cmap=cm)
+    if post: 
+        for i,p in enumerate(g_dat[pstart:]):
+            ax6.scatter(p[:,1],p[:,3],c=pc_list[i],marker=".",s=1)
     if opts.match_hypercube or opts.custom_bound: 
         ax6.set_xlim(left=gmin[1],right=gmax[1])
         ax6.set_ylim(bottom=gmin[3],top=gmax[3])
@@ -181,9 +195,8 @@ def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):
     ax6.tick_params(axis='both', which='major', labelsize=10) 
     
     #ax7 = fig1.add_subplot(336)
-    lines_labels = [ax.get_legend_handles_labels() for ax in fig1.axes]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    fig1.legend(lines, labels, loc='upper right')
+    lines, labels = ax1.get_legend_handles_labels()
+    fig1.legend(lines, labels, loc='center right')
     
     fig1.tight_layout()
     fig1.subplots_adjust(hspace=0.05,wspace=0.05)
