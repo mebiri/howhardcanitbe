@@ -177,6 +177,11 @@ def build_plot(gammas,g_dat,lnL_list,filename,colormap=None,grey_dat=None):
     ax6.set_yticklabels([])
     ax6.tick_params(axis='both', which='major', labelsize=10) 
     
+    #ax7 = fig1.add_subplot(336)
+    lines_labels = [ax.get_legend_handles_labels() for ax in fig1.axes]
+    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+    fig1.legend(lines, labels, loc='upper right')
+    
     fig1.tight_layout()
     fig1.subplots_adjust(hspace=0.05,wspace=0.05)
     save_name = "custom_corner_"+"_".join([f.split("/")[-1].split(".")[0] for f in filename])
@@ -265,7 +270,7 @@ post = False #whether data file is posterior (with lnL = 0)
 pname = None
 if opts.posterior:
     pname = opts.posterior
-    filenames.append(pname)
+    filenames += pname
     post = True
     for file in pname:
         print("Retrieving data from posterior file:",file)
@@ -287,6 +292,6 @@ if opts.match_hypercube or opts.custom_bound:
 if opts.composite and opts.use_all_composite_but_grayscale:
     build_plot(r_gammas, g_dat_list, lnL, filenames, grey_dat=g_dat_orig)
 else:
-    build_plot(r_gammas, g_dat, lnL, filenames)
+    build_plot(r_gammas, g_dat_list, lnL, filenames)
 
 
