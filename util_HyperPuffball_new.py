@@ -151,14 +151,15 @@ if opts.supplementary_coordinate_code and opts.supplementary_coordinate_function
             print(" Retrieving param bounds from external module")
             supplemental_bound_func = getattr(external_coordinate_module, "get_bounds")
             param_dict = supplemental_bound_func(plist,param_dict,**external_kwargs)
-        except:
-            print(" WARNING: external range requested but no 'get_bounds()' function found. Using supplied bounds as-is.")
+        except Exception as e:
+            print(" ERROR fetching external ranges:",e)
+            print(" WARNING: external range requested but not retrieved. Using supplied bounds as-is.")
 
 
 #at this point, all given params must have ranges
 if (len(plist) != len(param_dict)):
     print(" Reflection/downselect params inconsistent:",plist,param_dict)
-    raise Exception(" Reflect/downselect coords must have valid param range")
+    raise Exception(" All reflect/downselect coords must have valid param ranges")
 
 #set downselect
 if opts.downselect_parameter:
