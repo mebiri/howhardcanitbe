@@ -59,11 +59,12 @@ def inverse_dan_rotation(X, coord_names, **kwargs):
 
 def get_bounds(param_list, bounds_dict, **kwargs):
     if 'buffer' in kwargs:
-        buffer = np.float(kwargs['buffer'])
+        buffer = float(kwargs['buffer'])
     else:
         buffer = 0.0
         print("Warning: no buffer provided; returning bounds unchanged")
         return bounds_dict
+    print("  external bounds: applying buffer of",buffer)
     
     use_alternate_buffer = False
     if 'use_alternate_buffer' in kwargs:
@@ -75,7 +76,7 @@ def get_bounds(param_list, bounds_dict, **kwargs):
     rot_coords["r2"] = [-0.32445, 0.36469]
     rot_coords["r3"] = [-0.09529, 0.11046]
     
-    for indx, param in enumerate(rot_coords.keys()):
+    for param in rot_coords.keys():
         # apply hypercube buffer
         if use_alternate_buffer: #new_bound = bound +/- buffer*(width of param range) -> SYMMETRIC buffer
             ubound = rot_coords[param][1] + buffer*abs(rot_coords[param][1]-rot_coords[param][0])
@@ -93,9 +94,12 @@ def get_bounds(param_list, bounds_dict, **kwargs):
             buff_dict[p] = rot_coords["r"+str(i)]
             i += 1
         else:
-            buff_dict[p] = bounds_dict[p]
+            if p in bounds_dict.keys():
+                buff_dict[p] = bounds_dict[p]
+            else:
+                print("  external bounds: unbounded parameter "+p)
     if i == 0:
-        print(" BOUND ERROR: could not match buffered bounds to original")
+        raise Exception(" BOUND ERROR: could not match buffered bounds to original")
     return buff_dict
 
 
